@@ -169,7 +169,7 @@ function filterUsers(){
  let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',s=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
  let arr=state.users.filter(u=>{let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);return ok&&txt.includes(qv)});
  arr.sort((a,b)=>{let av=s==='user'?a.user.toLowerCase():s==='start'?(a.start||''):s==='end'?(a.end||''):s==='price'?Number(a.price)||0:days(a),bv=s==='user'?b.user.toLowerCase():s==='start'?(b.start||''):s==='end'?(b.end||''):s==='price'?Number(b.price)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
- $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th>Cliente</th><th>Línea / usuario</th><th>Fin línea</th><th>Objetivo Excel</th><th>Créditos</th><th>Ampliación</th><th>Caducidad cliente</th><th>Precio</th><th>Estado</th><th></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${esc(u.lineUser||'-')}</td><td>${fmt(u.lineExpiry)}</td><td>${fmt(u.targetExpiry)}</td><td>${u.creditsNeeded||0}</td><td>${esc(u.extension||'-')}</td><td>${fmt(u.end)}</td><td>${u.price?euro(u.price):'-'}</td><td><span class="status ${x[1]}">${x[0]}</span></td><td><button class="btn" onclick="openUser(${i})">Editar</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.users.length} clientes de pago · ${state.users.filter(x=>days(x)>=0).length} activos · ${state.users.filter(x=>days(x)<0).length} caducados</div>`
+ $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th>Cliente</th><th>Línea / usuario</th><th>Fin línea</th><th>Objetivo Excel</th><th>Créditos</th><th>Ampliación</th><th>Caducidad cliente</th><th>Precio</th><th>Estado</th><th></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${esc(u.lineUser||'-')}</td><td>${fmt(u.lineExpiry)}</td><td>${fmt(u.targetExpiry)}</td><td>${u.creditsNeeded||0}</td><td>${esc(u.extension||'-')}</td><td>${fmt(u.end)}</td><td>${u.price?euro(u.price):'-'}</td><td><span class="status ${x[1]}">${x[0]}</span></td><td style="white-space:nowrap"><button class="btn" onclick="openUser(${i})">Editar</button> <button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.users.length} clientes de pago · ${state.users.filter(x=>days(x)>=0).length} activos · ${state.users.filter(x=>days(x)<0).length} caducados</div>`
 }
 function free(){
  let cost=state.freeUsers.length*state.creditTotals.avgLine;
@@ -273,6 +273,7 @@ function openUser(index=null, freeIndex=null){
  </div>
  <div class="modalfoot">
  <button class="btn" onclick="closeModal()">Cancelar</button>
+ ${(index!==null || isFree)?`<button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${index===null?'null':index},${isFree?freeIndex:'null'})">🗑️ Eliminar</button>`:''}
  <button class="btn primary" onclick="saveUser(${index===null?'null':index},${isFree?freeIndex:'null'})">Guardar</button>
  </div>`;
  $('#modalbg').style.display='flex'
@@ -309,6 +310,20 @@ function saveUser(index, freeIndex=null){
  toast(isFree?'Usuario guardado como GRATIS':'Usuario guardado');
  render(isFree?'free':'users');
 }
+function deleteUser(index, freeIndex=null){
+ let isFree = freeIndex !== null && freeIndex !== undefined;
+ let arr = isFree ? state.freeUsers : state.users;
+ let pos = isFree ? freeIndex : index;
+ if(pos===null || pos===undefined || !arr[pos]) return;
+ let name = arr[pos].user || 'este cliente';
+ if(!confirm(`¿Seguro que quieres eliminar a ${name}?\n\nEsta acción eliminará el cliente de KIRA CONTROL.`)) return;
+ arr.splice(pos,1);
+ save();
+ closeModal();
+ toast('Cliente eliminado');
+ render(isFree?'free':'users');
+}
+
 function closeModal(){$('#modalbg').style.display='none'}
 $('#modalbg').onclick=e=>{if(e.target.id==='modalbg')closeModal()}
 
