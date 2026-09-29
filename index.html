@@ -99,14 +99,26 @@ async function initFirebase(){
      await kiraRef.set(state);
      setFirebaseStatus('☁️ Datos actuales subidos a Firebase');
    }else{
-     state=snap.val();
+     state=snap.val()||{};
+     state.users=Array.isArray(state.users)?state.users:[];
+     state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
+     state.credits=Array.isArray(state.credits)?state.credits:[];
+     state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+     state.viewPrefs=state.viewPrefs||{};
+     state.creditTotals=state.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
      localStorage.setItem('kira-control-v7',JSON.stringify(state));
      setFirebaseStatus('☁️ Conectado · datos de Firebase');
    }
    firebaseReady=true;
    kiraRef.on('value',snap=>{
      if(!snap.exists())return;
-     state=snap.val();
+     state=snap.val()||{};
+     state.users=Array.isArray(state.users)?state.users:[];
+     state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
+     state.credits=Array.isArray(state.credits)?state.credits:[];
+     state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+     state.viewPrefs=state.viewPrefs||{};
+     state.creditTotals=state.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
      localStorage.setItem('kira-control-v7',JSON.stringify(state));
      setFirebaseStatus('☁️ Sincronizado');
      const active=document.querySelector('.nav button.active,[data-page].active');
@@ -245,7 +257,7 @@ function renewals(){
  let arr=[...state.users,...state.freeUsers].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b));
  $('#content').innerHTML=header('Renovaciones','Próximas caducidades de clientes de pago y gratis',customButton('renewals'))
  +`<div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Usuario</th><th data-view-key="type">Tipo</th><th data-view-key="end">Caduca</th><th data-view-key="days">Días</th><th data-view-key="actions">Acción</th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),isFree=i<0;return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="type">${isFree?'GRATIS':'PAGO'}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="days" class="${days(u)<=7?'yellow':''}">${days(u)}</td><td data-view-key="actions">${isFree?'<span class="small">Sin renovación de pago</span>':`<button class="btn primary" onclick="renew(${i})">🔄 Renovar</button>`}</td></tr>`}).join('')}</tbody></table></div></div>
- <div class="panel" style="margin-top:13px"><h2>🧾 Historial de renovaciones</h2>${state.renewalHistory.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Duración</th><th>Precio</th><th>Nueva caducidad</th></tr></thead><tbody>${[...state.renewalHistory].reverse().map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td>${x.months} meses</td><td>${euro(x.price)}</td><td>${fmt(x.newEnd)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="small">Todavía no hay renovaciones registradas.</div>'}</div>`;applyViewPrefs('renewals')
+ <div class="panel" style="margin-top:13px"><h2>🧾 Historial de renovaciones</h2>${(Array.isArray(state.renewalHistory)?state.renewalHistory:[]).length?`<div class="tablewrap"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Duración</th><th>Precio</th><th>Nueva caducidad</th></tr></thead><tbody>${[...(Array.isArray(state.renewalHistory)?state.renewalHistory:[])].reverse().map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td>${x.months} meses</td><td>${euro(x.price)}</td><td>${fmt(x.newEnd)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="small">Todavía no hay renovaciones registradas.</div>'}</div>`;applyViewPrefs('renewals')
 }
 function renew(i){
  const u=state.users[i]; if(!u)return;
