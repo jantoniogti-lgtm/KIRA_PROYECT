@@ -66,6 +66,9 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
 const kiraRef=db.ref('kiraControl');
 let state=JSON.parse(localStorage.getItem('kira-control-v7')||'null')||JSON.parse(JSON.stringify(DATA));
+state.credits=Array.isArray(state.credits)?state.credits:[];
+state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+state.viewPrefs=state.viewPrefs||{};
 let firebaseReady=false;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
@@ -75,10 +78,10 @@ const fmt=d=>d?new Date(d).toLocaleDateString('es-ES'):'-';
 function days(u){if(!u.end)return 999999;return Math.ceil((new Date(u.end)-TODAY)/86400000)}
 function st(u){let d=days(u);if(d<0)return ['Caducado','s-exp'];if(d<=7)return ['Caduca pronto','s-soon'];return ['Activo','s-active']}
 const UI_KEY='kira-control-ui-v1';
-let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',s:'user',dir:'asc'},free:{q:'',s:'user',dir:'asc'}};
+let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',m:'',s:'user',dir:'asc',need:'all',price:'all',date:'all'},free:{q:'',s:'user',dir:'asc'}};
 function saveUI(){localStorage.setItem(UI_KEY,JSON.stringify(uiState));}
 function setUIPage(p){uiState.page=p;saveUI();}
-function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
+function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
 function save(){
@@ -128,7 +131,7 @@ const VIEW_CONFIG={
  users:{title:'Clientes de pago',items:{user:'Cliente',line:'Línea / usuario',lineExpiry:'Fin línea',target:'Objetivo Excel',credits:'Créditos',extension:'Ampliación',end:'Caducidad cliente',price:'Precio',status:'Estado',actions:'Acciones'}},
  free:{title:'Gratis / Gasto',items:{user:'Cliente',line:'Línea / usuario',lineExpiry:'Fin línea',target:'Objetivo Excel',credits:'Créditos',extension:'Ampliación',end:'Caducidad cliente',type:'Tipo',actions:'Acciones'}},
  renewals:{title:'Renovaciones',items:{user:'Usuario',type:'Tipo',end:'Caduca',days:'Días',actions:'Acción'}},
- credits:{title:'Créditos',items:{summary:'Resumen de compras',history:'Historial de compras',date:'Fecha',paid:'Pagado',credits:'Créditos',lines:'Líneas',avgCredit:'€/crédito',avgLine:'€/línea'}},
+ credits:{title:'Créditos',items:{summary:'Resumen de compras',balance:'Saldo de créditos',history:'Historial de compras',date:'Fecha',paid:'Pagado',credits:'Créditos',lines:'Líneas',avgCredit:'€/crédito',avgLine:'€/línea',actions:'Acciones'}},
  finance:{title:'Finanzas',items:{summary:'Resumen financiero',monthly:'Resumen mensual',evolution:'Evolución'}},
  settings:{title:'Datos / Copias',items:{backup:'Copias',firebase:'Firebase'}}
 };
@@ -159,7 +162,8 @@ function dashboard(){
  let expired=state.users.filter(u=>days(u)<0).length;
  let t=recalcEconomics(), freeCost=gratis*t.avgLine;
  let purchaseExpense=t.paid;
- let income=state.sales.income.reduce((a,b)=>a+b,0), expense=state.sales.expense.reduce((a,b)=>a+b,0);
+ let renewalIncome=(state.renewalHistory||[]).reduce((a,x)=>a+(Number(x.price)||0),0);
+ let income=state.sales.income.reduce((a,b)=>a+b,0)+renewalIncome, expense=state.sales.expense.reduce((a,b)=>a+b,0);
  let upcoming=[...state.users].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b)).slice(0,10);
  $('#content').innerHTML=header('Dashboard','KIRA CONTROL · 362 usuarios del LISTADO CLI.xlsx',
  `${customButton('dashboard')}<button class="btn primary" onclick="openUser()">＋ Nuevo cliente</button>`)
@@ -197,19 +201,29 @@ function users(){
  `${customButton('users')}<button class="btn" onclick="exportJSON()">⬇ Copia</button><button class="btn primary" onclick="openUser()">＋ Nuevo</button>`)
  +`<div class="panel"><div class="filters">
  <input id="uq" placeholder="🔍 Usuario, MAC, fecha..." oninput="filterUsers()">
- <select id="uf" onchange="filterUsers()"><option value="all">Todos</option><option value="active">Activos</option><option value="soon">≤ 7 días</option><option value="month">≤ 30 días</option><option value="expired">Caducados</option></select>
+ <select id="uf" onchange="filterUsers()"><option value="all">Estado: todos</option><option value="active">🟢 Activos</option><option value="soon">🟡 ≤ 7 días</option><option value="month">🟠 ≤ 30 días</option><option value="expired">🔴 Caducados</option></select>
  <input id="um" type="month" title="Ver clientes por mes de caducidad" onchange="filterUsers()">
- <select id="us" onchange="filterUsers()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option><option value="price">Precio</option><option value="days">Días restantes</option></select>
+ <select id="un" onchange="filterUsers()"><option value="all">Créditos: todos</option><option value="needed">⚠️ Necesitan créditos</option><option value="none">✅ Sin créditos pendientes</option></select>
+ <select id="up" onchange="filterUsers()"><option value="all">Precio: todos</option><option value="paid">💳 Con precio</option><option value="zero">🆓 Precio 0 €</option></select>
+ <select id="us" onchange="filterUsers()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option><option value="price">Precio</option><option value="days">Días restantes</option><option value="credits">Créditos necesarios</option></select>
  <select id="ud" onchange="filterUsers()"><option value="asc">↑ Ascendente</option><option value="desc">↓ Descendente</option></select>
- </div><div class="small filterhint">Los filtros se pueden combinar.</div><div id="utable"></div></div>`;
+ </div><div class="small filterhint">Filtros combinables · 📅 Mes = mes de caducidad · ⚠️ Créditos = según objetivo Excel.</div><div id="utable"></div></div>`;
  restoreUsersUI();filterUsers();applyViewPrefs('users')
 }
 function filterUsers(){
- let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',s=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
- uiState.users={q:qv,f,m,s,dir};saveUI();
- let arr=state.users.filter(u=>{let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);let monthOk=!m||String(u.end||'').slice(0,7)===m;return ok&&monthOk&&txt.includes(qv)});
- arr.sort((a,b)=>{let av=s==='user'?a.user.toLowerCase():s==='start'?(a.start||''):s==='end'?(a.end||''):s==='price'?Number(a.price)||0:days(a),bv=s==='user'?b.user.toLowerCase():s==='start'?(b.start||''):s==='end'?(b.end||''):s==='price'?Number(b.price)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
- $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${u.creditsNeeded||0}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${u.price?euro(u.price):'-'}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span></td><td data-view-key="actions" style="white-space:nowrap"><button class="btn" onclick="openUser(${i})">Editar</button> <button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.users.length} clientes de pago · ${state.users.filter(x=>days(x)>=0).length} activos · ${state.users.filter(x=>days(x)<0).length} caducados</div>`;applyViewPrefs('users')
+ let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',need=$('#un')?.value||'all',priceFilter=$('#up')?.value||'all',srt=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
+ uiState.users={q:qv,f,m,need,price:priceFilter,s:srt,dir};saveUI();
+ let arr=state.users.filter(u=>{
+   let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();
+   let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);
+   let monthOk=!m||String(u.end||'').slice(0,7)===m;
+   let creditOk=need==='all'||(need==='needed'&&(Number(u.creditsNeeded)||0)>0)||(need==='none'&&(Number(u.creditsNeeded)||0)<=0);
+   let priceOk=priceFilter==='all'||(priceFilter==='paid'&&(Number(u.price)||0)>0)||(priceFilter==='zero'&&(Number(u.price)||0)<=0);
+   return ok&&monthOk&&creditOk&&priceOk&&txt.includes(qv)
+ });
+ arr.sort((a,b)=>{let av=srt==='user'?String(a.user||'').toLowerCase():srt==='start'?(a.start||''):srt==='end'?(a.end||''):srt==='price'?Number(a.price)||0:srt==='credits'?Number(a.creditsNeeded)||0:days(a),bv=srt==='user'?String(b.user||'').toLowerCase():srt==='start'?(b.start||''):srt==='end'?(b.end||''):srt==='price'?Number(b.price)||0:srt==='credits'?Number(b.creditsNeeded)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
+ $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span></td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
+ applyViewPrefs('users')
 }
 function free(){
  let cost=state.freeUsers.length*state.creditTotals.avgLine;
@@ -230,13 +244,27 @@ function filterFree(){
 function renewals(){
  let arr=[...state.users,...state.freeUsers].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b));
  $('#content').innerHTML=header('Renovaciones','Próximas caducidades de clientes de pago y gratis',customButton('renewals'))
- +`<div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Usuario</th><th data-view-key="type">Tipo</th><th data-view-key="end">Caduca</th><th data-view-key="days">Días</th><th data-view-key="actions">Acción</th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),isFree=i<0;return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="type">${isFree?'GRATIS':'PAGO'}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="days" class="${days(u)<=7?'yellow':''}">${days(u)}</td><td data-view-key="actions">${isFree?'<span class="small">Sin renovación de pago</span>':`<button class="btn primary" onclick="renew(${i})">🔄 Renovar</button>`}</td></tr>`}).join('')}</tbody></table></div></div>`;applyViewPrefs('renewals')
+ +`<div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Usuario</th><th data-view-key="type">Tipo</th><th data-view-key="end">Caduca</th><th data-view-key="days">Días</th><th data-view-key="actions">Acción</th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),isFree=i<0;return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="type">${isFree?'GRATIS':'PAGO'}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="days" class="${days(u)<=7?'yellow':''}">${days(u)}</td><td data-view-key="actions">${isFree?'<span class="small">Sin renovación de pago</span>':`<button class="btn primary" onclick="renew(${i})">🔄 Renovar</button>`}</td></tr>`}).join('')}</tbody></table></div></div>
+ <div class="panel" style="margin-top:13px"><h2>🧾 Historial de renovaciones</h2>${state.renewalHistory.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Duración</th><th>Precio</th><th>Nueva caducidad</th></tr></thead><tbody>${[...state.renewalHistory].reverse().map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td>${x.months} meses</td><td>${euro(x.price)}</td><td>${fmt(x.newEnd)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="small">Todavía no hay renovaciones registradas.</div>'}</div>`;applyViewPrefs('renewals')
 }
 function renew(i){
- let u=state.users[i],m=prompt('Meses a añadir','1');if(m===null)return;m=Number(m);if(!m||m<1)return;
- let base=new Date(u.end);if(base<TODAY)base=new Date(TODAY);base.setMonth(base.getMonth()+m);u.end=base.toISOString().slice(0,10);save();toast('Renovación guardada');render('renewals')
+ const u=state.users[i]; if(!u)return;
+ $('#modal').innerHTML=`<h2>🔄 Renovar cliente</h2><p class="small"><b>${esc(u.user)}</b> · Caducidad actual: ${fmt(u.end)}</p>
+ <div class="form">
+  <label>Duración<select id="rmonths"><option value="1">1 mes</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12" selected>12 meses</option></select></label>
+  <label>Precio cobrado (€)<input id="rprice" type="number" min="0" step="0.01" value="${Number(u.price)||0}"></label>
+  <label>Fecha de renovación<input id="rdate" type="date" value="${new Date(TODAY).toISOString().slice(0,10)}"></label>
+ </div><div class="modalfoot"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveRenewal(${i})">Guardar renovación</button></div>`;
+ $('#modalbg').style.display='flex';
 }
-
+function saveRenewal(i){
+ const u=state.users[i]; if(!u)return;
+ const months=Number($('#rmonths').value)||12, price=Number($('#rprice').value)||0, date=$('#rdate').value||new Date(TODAY).toISOString().slice(0,10);
+ let base=new Date(u.end); if(isNaN(base)||base<TODAY)base=new Date(TODAY); base.setMonth(base.getMonth()+months); u.end=base.toISOString().slice(0,10); if(price>0)u.price=price;
+ state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+ state.renewalHistory.push({id:Date.now(),userId:u.id,user:u.user,date,months,price,newEnd:u.end});
+ save(); closeModal(); toast('Renovación guardada'); render('renewals');
+}
 function recalcEconomics(){
   const list=Array.isArray(state.credits)?state.credits:[];
   const paid=list.reduce((a,x)=>a+(Number(x.paid)||0),0);
@@ -293,12 +321,12 @@ function credits(){
  let t=recalcEconomics();
  $('#content').innerHTML=header('Créditos','Compras históricas y coste medio real',`${customButton('credits')}<button class="btn primary" onclick="openCreditPurchase()">＋ Nueva compra</button>`)
  +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">TOTAL PAGADO</div><div class="big orange">${euro(t.paid)}</div></div><div class="card"><div class="label">TOTAL CRÉDITOS</div><div class="big">${num(t.credits)}</div></div><div class="card"><div class="label">TOTAL LÍNEAS</div><div class="big">${num(t.lines)}</div></div><div class="card"><div class="label">COMPRAS</div><div class="big">${state.credits.length}</div></div></div>
- <div class="cards" style="margin-top:12px"><div class="card"><div class="label">COSTE MEDIO / CRÉDITO</div><div class="big yellow">${euro(t.avgCredit)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.credits)}</div></div><div class="card"><div class="label">COSTE MEDIO / LÍNEA</div><div class="big yellow">${euro(t.avgLine)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.lines)}</div></div><div class="card"><div class="label">LÍNEAS / COMPRA</div><div class="big">${num(t.lines/state.credits.length)}</div></div><div class="card"><div class="label">CRÉDITOS / COMPRA</div><div class="big">${num(t.credits/state.credits.length)}</div></div></div>
- <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${state.credits.map((x,i)=>`<tr><td>${fmt(x.date)}</td><td>${euro(x.paid)}</td><td>${num(x.credits)}</td><td>${num(x.lines)}</td><td>${euro(x.paid/x.credits)}</td><td>${euro(x.paid/x.lines)}</td><td><button class="btn small" onclick="editCreditPurchase(${i})">✏️ Editar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
+ <div class="cards" style="margin-top:12px" data-view-key="balance"><div class="card"><div class="label">CRÉDITOS PENDIENTES OBJETIVOS</div><div class="big yellow">${num(state.lineTotals?.creditsNeeded||0)}</div></div><div class="card"><div class="label">SALDO TRAS OBJETIVOS</div><div class="big green">${num(Math.max(0,(t.credits||0)-(state.lineTotals?.creditsNeeded||0)))}</div></div><div class="card"><div class="label">COSTE MEDIO / CRÉDITO</div><div class="big yellow">${euro(t.avgCredit)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.credits)}</div></div><div class="card"><div class="label">COSTE MEDIO / LÍNEA</div><div class="big yellow">${euro(t.avgLine)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.lines)}</div></div><div class="card"><div class="label">LÍNEAS / COMPRA</div><div class="big">${num(t.lines/state.credits.length)}</div></div><div class="card"><div class="label">CRÉDITOS / COMPRA</div><div class="big">${num(t.credits/state.credits.length)}</div></div></div>
+ <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${state.credits.map((x,i)=>`<tr><td data-view-key="date">${fmt(x.date)}</td><td data-view-key="paid">${euro(x.paid)}</td><td data-view-key="credits">${num(x.credits)}</td><td data-view-key="lines">${num(x.lines)}</td><td data-view-key="avgCredit">${euro(x.paid/x.credits)}</td><td data-view-key="avgLine">${euro(x.paid/x.lines)}</td><td data-view-key="actions"><button class="btn small" onclick="editCreditPurchase(${i})">✏️ Editar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
 }
 
 function finance(){
- let s=state.sales, income=s.income.reduce((a,b)=>a+b,0), expense=s.expense.reduce((a,b)=>a+b,0), benefit=s.benefit.reduce((a,b)=>a+b,0);
+ let s=state.sales, renewalIncome=(state.renewalHistory||[]).reduce((a,x)=>a+(Number(x.price)||0),0), income=s.income.reduce((a,b)=>a+b,0)+renewalIncome, expense=s.expense.reduce((a,b)=>a+b,0), benefit=s.benefit.reduce((a,b)=>a+b,0);
  let ct=recalcEconomics();
  let purchaseExpense=ct.paid;
  let totalIncome=income;
@@ -306,8 +334,8 @@ function finance(){
  let freeCost=state.freeUsers.length*ct.avgLine;
  $('#content').innerHTML=header('Finanzas','Resumen Excel + compras reales de créditos',customButton('finance'))
  +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">INGRESOS</div><div class="big orange">${euro(income)}</div></div><div class="card"><div class="label">GASTOS CRÉDITOS</div><div class="big red">${euro(purchaseExpense)}</div></div><div class="card"><div class="label">BENEFICIO REAL ESTIMADO</div><div class="big green">${euro(realBenefit)}</div></div><div class="card"><div class="label">COSTE EST. GRATIS ACTUALES</div><div class="big yellow">${euro(freeCost)}</div></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Líneas</th><th>Beneficio</th></tr></thead><tbody>${state.months.map((m,i)=>`<tr><td><b>${m}</b></td><td>${euro(s.income[i])}</td><td>${euro(s.expense[i])}</td><td>${num(s.lines[i])}</td><td>${euro(s.benefit[i])}</td></tr>`).join('')}</tbody></table></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let max=Math.max(...s.income,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${s.income[i]/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(s.income[i])}</b></div>`}).join('')}</div>`;applyViewPrefs('finance');
+ <div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Líneas</th><th>Beneficio</th></tr></thead><tbody>${state.months.map((m,i)=>{let ri=(state.renewalHistory||[]).filter(x=>{let d=new Date(x.date);return d.getFullYear()===TODAY.getFullYear()&&d.getMonth()===i}).reduce((a,x)=>a+(Number(x.price)||0),0);let inc=(s.income[i]||0)+ri;return `<tr><td><b>${m}</b></td><td>${euro(inc)}</td><td>${euro(s.expense[i])}</td><td>${num(s.lines[i])}</td><td>${euro(inc-(s.expense[i]||0))}</td></tr>`}).join('')}</tbody></table></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let ri=(state.renewalHistory||[]).filter(x=>{let d=new Date(x.date);return d.getFullYear()===TODAY.getFullYear()&&d.getMonth()===i}).reduce((a,x)=>a+(Number(x.price)||0),0);let inc=(s.income[i]||0)+ri;let max=Math.max(...s.income,inc,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${inc/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(inc)}</b></div>`}).join('')}</div>`;applyViewPrefs('finance');
 }
 
 function openUser(index=null, freeIndex=null){
@@ -390,8 +418,8 @@ function closeModal(){$('#modalbg').style.display='none'}
 $('#modalbg').onclick=e=>{if(e.target.id==='modalbg')closeModal()}
 
 function settings(){
- $('#content').innerHTML=header('Datos / Copias','La V4 parte de cero con el LISTADO CLI.xlsx',customButton('settings'))
- +`<div class="grid2"><div class="panel" data-view-key="backup"><h2>💾 Copias</h2><p class="small">Los cambios manuales se guardan en este navegador. Puedes exportar un respaldo antes de cualquier cambio importante.</p><div class="actions"><button class="btn primary" onclick="exportJSON()">⬇ Exportar JSON</button><label class="btn">⬆ Importar JSON<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label><button class="btn" onclick="resetData()">↩ Restaurar Excel</button></div></div><div class="panel" data-view-key="firebase"><h2>🔥 Estructura preparada para Firebase</h2><p class="small">La aplicación separa clientes de pago, gratis/gasto, renovaciones, créditos y finanzas. El siguiente paso puede conectar estos módulos a Firebase para sincronización entre móvil y PC.</p></div></div>`;applyViewPrefs('settings');
+ $('#content').innerHTML=header('Datos / Copias','KIRA CONTROL V13 · datos y sincronización',customButton('settings'))
+ +`<div class="grid2"><div class="panel" data-view-key="backup"><h2>💾 Copias</h2><p class="small">Los cambios manuales se guardan en este navegador. Puedes exportar un respaldo antes de cualquier cambio importante.</p><div class="actions"><button class="btn primary" onclick="exportJSON()">⬇ Exportar JSON</button><label class="btn">⬆ Importar JSON<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label><button class="btn" onclick="resetData()">↩ Restaurar Excel</button></div></div><div class="panel" data-view-key="firebase"><h2>🔥 Estructura preparada para Firebase</h2><p class="small">La aplicación separa clientes de pago, gratis/gasto, renovaciones, créditos y finanzas. Los módulos se guardan en Firebase para sincronización entre móvil y PC cuando la conexión está disponible.</p></div></div>`;applyViewPrefs('settings');
 }
 function exportJSON(){let b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='KIRA_CONTROL_BACKUP.json';a.click()}
 function importJSON(inp){let f=inp.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);save();toast('Importado');render('dashboard')}catch(e){toast('JSON no válido')}};r.readAsText(f)}
