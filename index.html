@@ -74,6 +74,13 @@ const num=n=>Number(n||0).toLocaleString('es-ES',{maximumFractionDigits:2});
 const fmt=d=>d?new Date(d).toLocaleDateString('es-ES'):'-';
 function days(u){if(!u.end)return 999999;return Math.ceil((new Date(u.end)-TODAY)/86400000)}
 function st(u){let d=days(u);if(d<0)return ['Caducado','s-exp'];if(d<=7)return ['Caduca pronto','s-soon'];return ['Activo','s-active']}
+const UI_KEY='kira-control-ui-v1';
+let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',s:'user',dir:'asc'},free:{q:'',s:'user',dir:'asc'}};
+function saveUI(){localStorage.setItem(UI_KEY,JSON.stringify(uiState));}
+function setUIPage(p){uiState.page=p;saveUI();}
+function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
+function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
+
 function save(){
  localStorage.setItem('kira-control-v7',JSON.stringify(state));
  if(firebaseReady){
@@ -108,13 +115,13 @@ async function initFirebase(){
    setFirebaseStatus('⚠️ Firebase no disponible · modo local');
    firebaseReady=false;
  }
- render('dashboard');
+ render(uiState.page||'dashboard');
 }
 function toast(t){let x=$('#toast');x.textContent=t;x.style.display='block';setTimeout(()=>x.style.display='none',1800)}
 function header(title,sub,actions=''){return `<div class="top"><div><h1>${title}</h1><p>${sub||''}</p></div><div class="actions">${actions}</div></div>`}
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>render(b.dataset.page));
 function activate(p){document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===p))}
-function render(p='dashboard'){activate(p);({dashboard,users,free,renewals,credits,finance,settings}[p]||dashboard)()}
+function render(p=uiState.page||'dashboard'){setUIPage(p);activate(p);({dashboard,users,free,renewals,credits,finance,settings}[p]||dashboard)()}
 
 const VIEW_CONFIG={
  dashboard:{title:'Dashboard',items:{cards:'Resumen principal',upcoming:'Próximas caducidades',economics:'Resumen económico',lines:'Control de líneas',status:'Estado'}},
@@ -194,10 +201,11 @@ function users(){
  <select id="us" onchange="filterUsers()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option><option value="price">Precio</option><option value="days">Días restantes</option></select>
  <select id="ud" onchange="filterUsers()"><option value="asc">↑ Ascendente</option><option value="desc">↓ Descendente</option></select>
  </div><div class="small filterhint">Los filtros se pueden combinar.</div><div id="utable"></div></div>`;
- filterUsers();applyViewPrefs('users')
+ restoreUsersUI();filterUsers();applyViewPrefs('users')
 }
 function filterUsers(){
  let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',s=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
+ uiState.users={q:qv,f,s,dir};saveUI();
  let arr=state.users.filter(u=>{let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);return ok&&txt.includes(qv)});
  arr.sort((a,b)=>{let av=s==='user'?a.user.toLowerCase():s==='start'?(a.start||''):s==='end'?(a.end||''):s==='price'?Number(a.price)||0:days(a),bv=s==='user'?b.user.toLowerCase():s==='start'?(b.start||''):s==='end'?(b.end||''):s==='price'?Number(b.price)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
  $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${u.creditsNeeded||0}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${u.price?euro(u.price):'-'}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span></td><td data-view-key="actions" style="white-space:nowrap"><button class="btn" onclick="openUser(${i})">Editar</button> <button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.users.length} clientes de pago · ${state.users.filter(x=>days(x)>=0).length} activos · ${state.users.filter(x=>days(x)<0).length} caducados</div>`;applyViewPrefs('users')
@@ -208,10 +216,11 @@ function free(){
  `${customButton('free')}<button class="btn" onclick="exportJSON()">⬇ Copia</button>`)
  +`<div class="cards"><div class="card"><div class="label">USUARIOS GRATIS</div><div class="big yellow">${state.freeUsers.length}</div></div><div class="card"><div class="label">INGRESOS</div><div class="big">0 €</div></div><div class="card"><div class="label">COSTE ESTIMADO</div><div class="big red">${euro(cost)}</div></div><div class="card"><div class="label">COSTE / LÍNEA</div><div class="big">${euro(state.creditTotals.avgLine)}</div></div></div>
  <div class="panel" style="margin-top:13px"><div class="filters"><input id="fq" placeholder="🔍 Buscar usuario, MAC..." oninput="filterFree()"><select id="fs" onchange="filterFree()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option></select><select id="fd" onchange="filterFree()"><option value="asc">↑ Ascendente</option><option value="desc">↓ Descendente</option></select></div><div id="ftable"></div></div>`;
- filterFree();applyViewPrefs('free')
+ restoreFreeUI();filterFree();applyViewPrefs('free')
 }
 function filterFree(){
  let q=($('#fq')?.value||'').toLowerCase(),s=$('#fs')?.value||'user',dir=$('#fd')?.value||'asc';
+ uiState.free={q,s,dir};saveUI();
  let arr=state.freeUsers.filter(u=>[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase().includes(q));
  arr.sort((a,b)=>{let av=s==='user'?a.user.toLowerCase():s==='start'?(a.start||''):a.end||'',bv=s==='user'?b.user.toLowerCase():s==='start'?(b.start||''):b.end||'';return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
  $('#ftable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="type">Tipo</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>`<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${u.creditsNeeded||0}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="type"><span class="status s-free">GRATIS / GASTO</span></td><td data-view-key="actions"><button class="btn" onclick="openUser(null,${state.freeUsers.indexOf(u)})">Editar</button></td></tr>`).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.freeUsers.length} gratis · ${state.freeUsers.filter(x=>days(x)>=0).length} activos · ${state.freeUsers.filter(x=>days(x)<0).length} caducados</div>`;applyViewPrefs('free')
@@ -257,13 +266,34 @@ function saveCreditPurchase(){
   state.credits.push({date:$('#cdate').value||new Date(TODAY).toISOString().slice(0,10),paid,credits,lines});
   recalcEconomics(); save(); closeModal(); toast('Compra añadida y cálculos actualizados'); render('credits');
 }
+function editCreditPurchase(i){
+  const x=state.credits[i];
+  if(!x)return;
+  $('#modal').innerHTML=`<h2>✏️ Editar compra de créditos</h2>
+  <p class="small">Modifica los datos de esta compra. Los totales y costes medios se recalcularán automáticamente.</p>
+  <div class="form">
+   <label>Fecha<input id="cdate" type="date" value="${x.date||''}"></label>
+   <label>Importe pagado (€)<input id="cpaid" type="number" min="0" step="0.01" value="${Number(x.paid)||0}"></label>
+   <label>Créditos comprados<input id="ccredits" type="number" min="0" step="0.01" value="${Number(x.credits)||0}"></label>
+   <label>Líneas equivalentes<input id="clines" type="number" min="0" step="0.01" value="${Number(x.lines)||0}"></label>
+  </div>
+  <div class="modalfoot"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="updateCreditPurchase(${i})">Guardar cambios</button></div>`;
+  $('#modalbg').style.display='flex';
+}
+function updateCreditPurchase(i){
+  const paid=Number($('#cpaid').value)||0, credits=Number($('#ccredits').value)||0, lines=Number($('#clines').value)||0;
+  if(paid<=0 || credits<=0){toast('Introduce importe y créditos');return}
+  if(!state.credits[i])return;
+  state.credits[i]={date:$('#cdate').value||new Date(TODAY).toISOString().slice(0,10),paid,credits,lines};
+  recalcEconomics(); save(); closeModal(); toast('Compra modificada y cálculos actualizados'); render('credits');
+}
 
 function credits(){
  let t=recalcEconomics();
  $('#content').innerHTML=header('Créditos','Compras históricas y coste medio real',`${customButton('credits')}<button class="btn primary" onclick="openCreditPurchase()">＋ Nueva compra</button>`)
  +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">TOTAL PAGADO</div><div class="big orange">${euro(t.paid)}</div></div><div class="card"><div class="label">TOTAL CRÉDITOS</div><div class="big">${num(t.credits)}</div></div><div class="card"><div class="label">TOTAL LÍNEAS</div><div class="big">${num(t.lines)}</div></div><div class="card"><div class="label">COMPRAS</div><div class="big">${state.credits.length}</div></div></div>
  <div class="cards" style="margin-top:12px"><div class="card"><div class="label">COSTE MEDIO / CRÉDITO</div><div class="big yellow">${euro(t.avgCredit)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.credits)}</div></div><div class="card"><div class="label">COSTE MEDIO / LÍNEA</div><div class="big yellow">${euro(t.avgLine)}</div><div class="small">${euro(t.paid)} ÷ ${num(t.lines)}</div></div><div class="card"><div class="label">LÍNEAS / COMPRA</div><div class="big">${num(t.lines/state.credits.length)}</div></div><div class="card"><div class="label">CRÉDITOS / COMPRA</div><div class="big">${num(t.credits/state.credits.length)}</div></div></div>
- <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th></tr></thead><tbody>${state.credits.map(x=>`<tr><td>${fmt(x.date)}</td><td>${euro(x.paid)}</td><td>${num(x.credits)}</td><td>${num(x.lines)}</td><td>${euro(x.paid/x.credits)}</td><td>${euro(x.paid/x.lines)}</td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
+ <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${state.credits.map((x,i)=>`<tr><td>${fmt(x.date)}</td><td>${euro(x.paid)}</td><td>${num(x.credits)}</td><td>${num(x.lines)}</td><td>${euro(x.paid/x.credits)}</td><td>${euro(x.paid/x.lines)}</td><td><button class="btn small" onclick="editCreditPurchase(${i})">✏️ Editar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
 }
 
 function finance(){
