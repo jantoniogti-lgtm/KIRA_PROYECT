@@ -78,7 +78,7 @@ const UI_KEY='kira-control-ui-v1';
 let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',s:'user',dir:'asc'},free:{q:'',s:'user',dir:'asc'}};
 function saveUI(){localStorage.setItem(UI_KEY,JSON.stringify(uiState));}
 function setUIPage(p){uiState.page=p;saveUI();}
-function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
+function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
 function save(){
@@ -198,15 +198,16 @@ function users(){
  +`<div class="panel"><div class="filters">
  <input id="uq" placeholder="🔍 Usuario, MAC, fecha..." oninput="filterUsers()">
  <select id="uf" onchange="filterUsers()"><option value="all">Todos</option><option value="active">Activos</option><option value="soon">≤ 7 días</option><option value="month">≤ 30 días</option><option value="expired">Caducados</option></select>
+ <input id="um" type="month" title="Ver clientes por mes de caducidad" onchange="filterUsers()">
  <select id="us" onchange="filterUsers()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option><option value="price">Precio</option><option value="days">Días restantes</option></select>
  <select id="ud" onchange="filterUsers()"><option value="asc">↑ Ascendente</option><option value="desc">↓ Descendente</option></select>
  </div><div class="small filterhint">Los filtros se pueden combinar.</div><div id="utable"></div></div>`;
  restoreUsersUI();filterUsers();applyViewPrefs('users')
 }
 function filterUsers(){
- let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',s=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
- uiState.users={q:qv,f,s,dir};saveUI();
- let arr=state.users.filter(u=>{let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);return ok&&txt.includes(qv)});
+ let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',s=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
+ uiState.users={q:qv,f,m,s,dir};saveUI();
+ let arr=state.users.filter(u=>{let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);let monthOk=!m||String(u.end||'').slice(0,7)===m;return ok&&monthOk&&txt.includes(qv)});
  arr.sort((a,b)=>{let av=s==='user'?a.user.toLowerCase():s==='start'?(a.start||''):s==='end'?(a.end||''):s==='price'?Number(a.price)||0:days(a),bv=s==='user'?b.user.toLowerCase():s==='start'?(b.start||''):s==='end'?(b.end||''):s==='price'?Number(b.price)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
  $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${u.creditsNeeded||0}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${u.price?euro(u.price):'-'}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span></td><td data-view-key="actions" style="white-space:nowrap"><button class="btn" onclick="openUser(${i})">Editar</button> <button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:9px">${arr.length} resultados / ${state.users.length} clientes de pago · ${state.users.filter(x=>days(x)>=0).length} activos · ${state.users.filter(x=>days(x)<0).length} caducados</div>`;applyViewPrefs('users')
 }
