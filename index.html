@@ -69,7 +69,9 @@ let state=JSON.parse(localStorage.getItem('kira-control-v7')||'null')||JSON.pars
 state.credits=Array.isArray(state.credits)?state.credits:[];
 state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
 state.viewPrefs=state.viewPrefs||{};
+state.meta=state.meta||{};
 let firebaseReady=false;
+let firebaseLoaded=false;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const euro=n=>Number(n||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
@@ -85,6 +87,8 @@ function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
 function save(){
+ state.meta=state.meta||{};
+ state.meta.updatedAt=Date.now();
  localStorage.setItem('kira-control-v7',JSON.stringify(state));
  if(firebaseReady){
    kiraRef.set(state).then(()=>setFirebaseStatus('☁️ Guardado en Firebase')).catch(e=>{console.error(e);setFirebaseStatus('⚠️ Error Firebase')});
@@ -95,30 +99,48 @@ async function initFirebase(){
  try{
    setFirebaseStatus('☁️ Conectando con Firebase...');
    const snap=await kiraRef.once('value');
-   if(!snap.exists()){
-     await kiraRef.set(state);
+   const localState=state;
+   const remote=snap.exists()?(snap.val()||{}):null;
+   if(!remote){
+     localState.meta=localState.meta||{};
+     localState.meta.updatedAt=localState.meta.updatedAt||Date.now();
+     await kiraRef.set(localState);
      setFirebaseStatus('☁️ Datos actuales subidos a Firebase');
    }else{
-     state=snap.val()||{};
-     state.users=Array.isArray(state.users)?state.users:[];
-     state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
-     state.credits=Array.isArray(state.credits)?state.credits:[];
-     state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
-     state.viewPrefs=state.viewPrefs||{};
-     state.creditTotals=state.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
-     localStorage.setItem('kira-control-v7',JSON.stringify(state));
-     setFirebaseStatus('☁️ Conectado · datos de Firebase');
+     const localUpdated=Number(localState.meta?.updatedAt||0);
+     const remoteUpdated=Number(remote.meta?.updatedAt||0);
+     if(localUpdated>remoteUpdated){
+       await kiraRef.set(localState);
+       setFirebaseStatus('☁️ Cambios locales sincronizados');
+     }else{
+       state=remote;
+       state.users=Array.isArray(state.users)?state.users:[];
+       state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
+       state.credits=Array.isArray(state.credits)?state.credits:[];
+       state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+       state.viewPrefs=state.viewPrefs||{};
+       state.meta=state.meta||{};
+       state.creditTotals=state.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
+       localStorage.setItem('kira-control-v7',JSON.stringify(state));
+       setFirebaseStatus('☁️ Conectado · datos de Firebase');
+     }
    }
    firebaseReady=true;
+   firebaseLoaded=true;
    kiraRef.on('value',snap=>{
      if(!snap.exists())return;
-     state=snap.val()||{};
-     state.users=Array.isArray(state.users)?state.users:[];
-     state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
-     state.credits=Array.isArray(state.credits)?state.credits:[];
-     state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
-     state.viewPrefs=state.viewPrefs||{};
-     state.creditTotals=state.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
+     const incoming=snap.val()||{};
+     incoming.users=Array.isArray(incoming.users)?incoming.users:[];
+     incoming.freeUsers=Array.isArray(incoming.freeUsers)?incoming.freeUsers:[];
+     incoming.credits=Array.isArray(incoming.credits)?incoming.credits:[];
+     incoming.renewalHistory=Array.isArray(incoming.renewalHistory)?incoming.renewalHistory:[];
+     incoming.viewPrefs=incoming.viewPrefs||{};
+     incoming.meta=incoming.meta||{};
+     incoming.creditTotals=incoming.creditTotals||{paid:0,credits:0,lines:0,avgCredit:0,avgLine:0};
+     const currentUpdated=Number(state.meta?.updatedAt||0);
+     const incomingUpdated=Number(incoming.meta?.updatedAt||0);
+     if(currentUpdated>incomingUpdated) return;
+     state=incoming;
      localStorage.setItem('kira-control-v7',JSON.stringify(state));
      setFirebaseStatus('☁️ Sincronizado');
      const active=document.querySelector('.nav button.active,[data-page].active');
@@ -337,17 +359,43 @@ function credits(){
  <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${state.credits.map((x,i)=>`<tr><td data-view-key="date">${fmt(x.date)}</td><td data-view-key="paid">${euro(x.paid)}</td><td data-view-key="credits">${num(x.credits)}</td><td data-view-key="lines">${num(x.lines)}</td><td data-view-key="avgCredit">${euro(x.paid/x.credits)}</td><td data-view-key="avgLine">${euro(x.paid/x.lines)}</td><td data-view-key="actions"><button class="btn small" onclick="editCreditPurchase(${i})">✏️ Editar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
 }
 
+function monthlyRenewalStats(monthIndex, year=TODAY.getFullYear()){
+ const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+ let income=0,count=0;
+ list.forEach(x=>{
+   const d=new Date(x.date);
+   if(!isNaN(d) && d.getFullYear()===year && d.getMonth()===monthIndex){
+     income+=Number(x.price)||0;
+     count++;
+   }
+ });
+ return {income,count};
+}
+function monthlyFinance(monthIndex){
+ const s=state.sales||{income:[],expense:[],lines:[]};
+ const r=monthlyRenewalStats(monthIndex);
+ const income=(Number(s.income?.[monthIndex])||0)+r.income;
+ const expense=Number(s.expense?.[monthIndex])||0;
+ const clients=(Number(s.lines?.[monthIndex])||0)+r.count;
+ const benefit=income-expense;
+ const avgClient=clients?benefit/clients:0;
+ return {income,expense,clients,benefit,avgClient,renewals:r.count};
+}
+
 function finance(){
- let s=state.sales, renewalIncome=(state.renewalHistory||[]).reduce((a,x)=>a+(Number(x.price)||0),0), income=s.income.reduce((a,b)=>a+b,0)+renewalIncome, expense=s.expense.reduce((a,b)=>a+b,0), benefit=s.benefit.reduce((a,b)=>a+b,0);
+ let s=state.sales||{income:[],expense:[],lines:[]};
+ let totalRenewals=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+ let renewalIncome=totalRenewals.reduce((a,x)=>a+(Number(x.price)||0),0);
+ let income=(s.income||[]).reduce((a,b)=>a+(Number(b)||0),0)+renewalIncome;
+ let expense=(s.expense||[]).reduce((a,b)=>a+(Number(b)||0),0);
+ let realBenefit=income-expense;
  let ct=recalcEconomics();
  let purchaseExpense=ct.paid;
- let totalIncome=income;
- let realBenefit=totalIncome-purchaseExpense;
  let freeCost=state.freeUsers.length*ct.avgLine;
- $('#content').innerHTML=header('Finanzas','Resumen Excel + compras reales de créditos',customButton('finance'))
- +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">INGRESOS</div><div class="big orange">${euro(income)}</div></div><div class="card"><div class="label">GASTOS CRÉDITOS</div><div class="big red">${euro(purchaseExpense)}</div></div><div class="card"><div class="label">BENEFICIO REAL ESTIMADO</div><div class="big green">${euro(realBenefit)}</div></div><div class="card"><div class="label">COSTE EST. GRATIS ACTUALES</div><div class="big yellow">${euro(freeCost)}</div></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Líneas</th><th>Beneficio</th></tr></thead><tbody>${state.months.map((m,i)=>{let ri=(state.renewalHistory||[]).filter(x=>{let d=new Date(x.date);return d.getFullYear()===TODAY.getFullYear()&&d.getMonth()===i}).reduce((a,x)=>a+(Number(x.price)||0),0);let inc=(s.income[i]||0)+ri;return `<tr><td><b>${m}</b></td><td>${euro(inc)}</td><td>${euro(s.expense[i])}</td><td>${num(s.lines[i])}</td><td>${euro(inc-(s.expense[i]||0))}</td></tr>`}).join('')}</tbody></table></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let ri=(state.renewalHistory||[]).filter(x=>{let d=new Date(x.date);return d.getFullYear()===TODAY.getFullYear()&&d.getMonth()===i}).reduce((a,x)=>a+(Number(x.price)||0),0);let inc=(s.income[i]||0)+ri;let max=Math.max(...s.income,inc,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${inc/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(inc)}</b></div>`}).join('')}</div>`;applyViewPrefs('finance');
+ $('#content').innerHTML=header('Finanzas','Resumen Excel + renovaciones + compras reales de créditos',customButton('finance'))
+ +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">INGRESOS</div><div class="big orange">${euro(income)}</div></div><div class="card"><div class="label">GASTOS CRÉDITOS</div><div class="big red">${euro(purchaseExpense)}</div></div><div class="card"><div class="label">BENEFICIO REAL ESTIMADO</div><div class="big green">${euro(income-purchaseExpense)}</div></div><div class="card"><div class="label">COSTE EST. GRATIS ACTUALES</div><div class="big yellow">${euro(freeCost)}</div></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Clientes</th><th>Renovaciones</th><th>Beneficio</th><th>Beneficio medio / cliente</th></tr></thead><tbody>${state.months.map((m,i)=>{let f=monthlyFinance(i);return `<tr><td><b>${m}</b></td><td>${euro(f.income)}</td><td>${euro(f.expense)}</td><td>${num(f.clients)}</td><td>${num(f.renewals)}</td><td>${euro(f.benefit)}</td><td><b>${euro(f.avgClient)}</b></td></tr>`}).join('')}</tbody></table></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let f=monthlyFinance(i);let max=Math.max(...(s.income||[]).map(Number),f.income,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${f.income/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(f.income)}</b></div>`}).join('')}</div>`;applyViewPrefs('finance');
 }
 
 function openUser(index=null, freeIndex=null){
