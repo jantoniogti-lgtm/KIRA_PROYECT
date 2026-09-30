@@ -213,14 +213,18 @@ function applyViewPrefs(page){
 
 function dashboard(){
  let paid=state.users.length, gratis=state.freeUsers.length, total=paid+gratis;
- let soon=state.users.filter(u=>days(u)>=0&&days(u)<=7).length;
  let expired=state.users.filter(u=>days(u)<0).length;
  let t=recalcEconomics(), freeCost=gratis*t.avgLine;
  let purchaseExpense=t.paid;
- let renewalIncome=(state.renewalHistory||[]).reduce((a,x)=>a+(Number(x.price)||0),0);
+ let renewalIncome=(Array.isArray(state.renewalHistory)?state.renewalHistory:[]).reduce((a,x)=>a+(Number(x.price)||0),0);
  let income=state.sales.income.reduce((a,b)=>a+b,0)+renewalIncome, expense=state.sales.expense.reduce((a,b)=>a+b,0);
  let upcoming=[...state.users].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b)).slice(0,10);
- $('#content').innerHTML=header('Dashboard','KIRA CONTROL · 362 usuarios del LISTADO CLI.xlsx',
+ const currentYear=TODAY.getFullYear(), currentMonth=TODAY.getMonth();
+ const monthNames=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+ const currentMonthLabel=`${monthNames[currentMonth]} ${currentYear}`;
+ const toRenew=state.users.filter(u=>{const d=String(u.end||'').slice(0,7);return d===`${currentYear}-${String(currentMonth+1).padStart(2,'0')}`}).length;
+ const renewedThisMonth=monthlyRenewalStats(currentMonth,currentYear).count;
+ $('#content').innerHTML=header('Dashboard','KIRA CONTROL · 363 usuarios del LISTADO CLI.xlsx',
  `${customButton('dashboard')}<button class="btn primary" onclick="openUser()">＋ Nuevo cliente</button>`)
  +`<div class="cards" data-view-key="cards">
  <div class="card"><div class="label">USUARIOS TOTAL</div><div class="big">${total}</div></div>
@@ -229,7 +233,7 @@ function dashboard(){
  <div class="card"><div class="label">ACTIVOS / CADUCADOS</div><div class="big"><span class="green">${total-expired}</span> / <span class="red">${expired}</span></div></div>
  </div>
  <div class="grid2" data-view-key="upcoming">
- <div class="panel"><h2>⚠️ Próximas caducidades</h2>${upcoming.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Usuario</th><th>Caducidad</th><th>Días</th><th>Estado</th></tr></thead><tbody>${upcoming.map(u=>{let s=st(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${fmt(u.end)}</td><td>${days(u)}</td><td><span class="status ${s[1]}">${s[0]}</span></td></tr>`}).join('')}</tbody></table></div>`:'<div class="small">No hay próximas caducidades.</div>'}</div>
+ <div class="panel"><h2>⚠️ Próximas caducidades</h2>${upcoming.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Usuario</th><th>Caducidad</th><th>Días</th><th>Estado</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${upcoming.map(u=>{let s=st(u),i=state.users.indexOf(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${fmt(u.end)}</td><td>${days(u)}</td><td><span class="status ${s[1]}">${s[0]}</span></td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small primary" onclick="renew(${i})">🔄 Renovar</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="small">No hay próximas caducidades.</div>'}</div>
  <div class="panel" data-view-key="economics"><h2>💰 Resumen económico</h2>
  <div class="kpi-grid">
  <div class="kpi"><div class="label">INGRESOS</div><div class="v orange">${euro(income)}</div></div>
@@ -238,6 +242,11 @@ function dashboard(){
  <div class="kpi"><div class="label">COSTE EST. GRATIS</div><div class="v yellow">${euro(freeCost)}</div></div>
  </div>
  <p class="small">Coste estimado de gratis = usuarios gratis × ${euro(t.avgLine)} por línea.</p>
+ </div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="currentMonth"><h2>📅 ${currentMonthLabel}</h2>
+ <div class="kpi-grid">
+ <div class="kpi"><div class="label">CLIENTES PARA RENOVAR</div><div class="v yellow">${toRenew}</div><div class="small">Clientes de pago con caducidad en ${monthNames[currentMonth].toLowerCase()}.</div></div>
+ <div class="kpi"><div class="label">CLIENTES RENOVADOS</div><div class="v green">${renewedThisMonth}</div><div class="small">Renovaciones registradas en ${monthNames[currentMonth].toLowerCase()}.</div></div>
  </div></div>
  <div class="panel" style="margin-top:13px" data-view-key="lines"><h2>📡 Control de líneas</h2>
  <div class="kpi-grid">
