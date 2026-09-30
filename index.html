@@ -279,7 +279,7 @@ function renewals(){
  let arr=[...state.users,...state.freeUsers].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b));
  $('#content').innerHTML=header('Renovaciones','Próximas caducidades de clientes de pago y gratis',customButton('renewals'))
  +`<div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Usuario</th><th data-view-key="type">Tipo</th><th data-view-key="end">Caduca</th><th data-view-key="days">Días</th><th data-view-key="actions">Acción</th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),isFree=i<0;return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="type">${isFree?'GRATIS':'PAGO'}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="days" class="${days(u)<=7?'yellow':''}">${days(u)}</td><td data-view-key="actions">${isFree?'<span class="small">Sin renovación de pago</span>':`<button class="btn primary" onclick="renew(${i})">🔄 Renovar</button>`}</td></tr>`}).join('')}</tbody></table></div></div>
- <div class="panel" style="margin-top:13px"><h2>🧾 Historial de renovaciones</h2>${(Array.isArray(state.renewalHistory)?state.renewalHistory:[]).length?`<div class="tablewrap"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Duración</th><th>Precio</th><th>Nueva caducidad</th></tr></thead><tbody>${[...(Array.isArray(state.renewalHistory)?state.renewalHistory:[])].reverse().map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td>${x.months} meses</td><td>${euro(x.price)}</td><td>${fmt(x.newEnd)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="small">Todavía no hay renovaciones registradas.</div>'}</div>`;applyViewPrefs('renewals')
+ <div class="panel" style="margin-top:13px"><h2>🧾 Historial de renovaciones</h2>${(Array.isArray(state.renewalHistory)?state.renewalHistory:[]).length?`<div class="tablewrap"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Duración</th><th>Precio</th><th>Nueva caducidad</th><th>Acciones</th></tr></thead><tbody>${[...(Array.isArray(state.renewalHistory)?state.renewalHistory:[])].reverse().map(x=>`<tr><td>${fmt(x.date||x.renewalDate)}</td><td><b>${esc(x.user)}</b></td><td>${x.months} meses</td><td>${euro(x.price)}</td><td>${fmt(x.newEnd)}</td><td><button class="btn small" onclick="editRenewal('${String(x.id)}')">✏️ Editar</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="small">Todavía no hay renovaciones registradas.</div>'}</div>`;applyViewPrefs('renewals')
 }
 function renew(i){
  const u=state.users[i]; if(!u)return;
@@ -291,13 +291,47 @@ function renew(i){
  </div><div class="modalfoot"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveRenewal(${i})">Guardar renovación</button></div>`;
  $('#modalbg').style.display='flex';
 }
+function addMonthsToDate(dateStr, months){
+ const parts=String(dateStr||'').slice(0,10).split('-').map(Number);
+ if(parts.length!==3 || parts.some(n=>!Number.isFinite(n))) return '';
+ const y=parts[0],m=parts[1],d=parts[2];
+ const total=(m-1)+Number(months||0);
+ const ny=y+Math.floor(total/12), nm=(total%12)+1;
+ const last=new Date(ny,nm,0).getDate();
+ return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,last)).padStart(2,'0')}`;
+}
 function saveRenewal(i){
  const u=state.users[i]; if(!u)return;
  const months=Number($('#rmonths').value)||12, price=Number($('#rprice').value)||0, date=$('#rdate').value||new Date(TODAY).toISOString().slice(0,10);
- let base=new Date(u.end); if(isNaN(base)||base<TODAY)base=new Date(TODAY); base.setMonth(base.getMonth()+months); u.end=base.toISOString().slice(0,10); if(price>0)u.price=price;
+ // La renovación siempre añade la duración a la FECHA DE INICIO del cliente, no a la fecha del día ni a la caducidad actual.
+ const startDate=String(u.start||'').slice(0,10);
+ const baseDate=startDate || String(u.end||'').slice(0,10);
+ const newEnd=addMonthsToDate(baseDate,months);
+ if(!newEnd){toast('El cliente no tiene una fecha de inicio válida');return;}
+ u.end=newEnd;
+ if(price>0)u.price=price;
  state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
- state.renewalHistory.push({id:Date.now(),userId:u.id,user:u.user,date,months,price,newEnd:u.end});
- save(); closeModal(); toast('Renovación guardada'); render('renewals');
+ state.renewalHistory.push({id:Date.now(),userId:u.id,user:u.user,date,renewalDate:date,months,price,newEnd:u.end,baseStart:baseDate});
+ save(); closeModal(); toast(`Renovación guardada · nueva caducidad ${fmt(newEnd)}`); render('renewals');
+}
+function editRenewal(id){
+ const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+ const idx=list.findIndex(x=>String(x.id)===String(id)); if(idx<0)return;
+ const x=list[idx];
+ $('#modal').innerHTML=`<h2>✏️ Editar renovación</h2><p class="small"><b>${esc(x.user||'')}</b> · Nueva caducidad: ${fmt(x.newEnd)}</p>
+ <div class="form">
+  <label>Fecha de renovación<input id="erdate" type="date" value="${String(x.date||x.renewalDate||'').slice(0,10)}"></label>
+  <label>Duración<select id="ermonths"><option value="1" ${Number(x.months)===1?'selected':''}>1 mes</option><option value="3" ${Number(x.months)===3?'selected':''}>3 meses</option><option value="6" ${Number(x.months)===6?'selected':''}>6 meses</option><option value="12" ${Number(x.months)===12?'selected':''}>12 meses</option></select></label>
+  <label>Precio cobrado (€)<input id="erprice" type="number" min="0" step="0.01" value="${Number(x.price)||0}"></label>
+ </div><div class="modalfoot"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveEditedRenewal(${idx})">Guardar cambios</button></div>`;
+ $('#modalbg').style.display='flex';
+}
+function saveEditedRenewal(idx){
+ const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; const x=list[idx]; if(!x)return;
+ x.date=$('#erdate').value||x.date||x.renewalDate||''; x.renewalDate=x.date; x.months=Number($('#ermonths').value)||12; x.price=Number($('#erprice').value)||0;
+ const u=state.users.find(z=>String(z.id)===String(x.userId));
+ if(u){ const base=String(u.start||x.baseStart||u.end||'').slice(0,10); const ne=addMonthsToDate(base,x.months); if(ne){x.newEnd=ne;u.end=ne;if(x.price>0)u.price=x.price;} }
+ save(); closeModal(); toast('Renovación actualizada'); render('renewals');
 }
 function recalcEconomics(){
   const list=Array.isArray(state.credits)?state.credits:[];
@@ -359,12 +393,16 @@ function credits(){
  <div class="panel" style="margin-top:13px"><h2>💳 Historial de compras</h2><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="date">Fecha</th><th data-view-key="paid">Pagado</th><th data-view-key="credits">Créditos</th><th data-view-key="lines">Líneas</th><th data-view-key="avgCredit">€/crédito</th><th data-view-key="avgLine">€/línea</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${state.credits.map((x,i)=>`<tr><td data-view-key="date">${fmt(x.date)}</td><td data-view-key="paid">${euro(x.paid)}</td><td data-view-key="credits">${num(x.credits)}</td><td data-view-key="lines">${num(x.lines)}</td><td data-view-key="avgCredit">${euro(x.paid/x.credits)}</td><td data-view-key="avgLine">${euro(x.paid/x.lines)}</td><td data-view-key="actions"><button class="btn small" onclick="editCreditPurchase(${i})">✏️ Editar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td>${euro(t.paid)}</td><td>${num(t.credits)}</td><td>${num(t.lines)}</td><td>${euro(t.avgCredit)}</td><td>${euro(t.avgLine)}</td></tr></tfoot></table></div></div>`;applyViewPrefs('credits');
 }
 
+function renewalDateParts(value){
+ const m=String(value||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+ return m?{year:Number(m[1]),month:Number(m[2])-1,day:Number(m[3])}:null;
+}
 function monthlyRenewalStats(monthIndex, year=TODAY.getFullYear()){
  const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
  let income=0,count=0;
  list.forEach(x=>{
-   const d=new Date(x.date);
-   if(!isNaN(d) && d.getFullYear()===year && d.getMonth()===monthIndex){
+   const d=renewalDateParts(x.date||x.renewalDate);
+   if(d && d.year===year && d.month===monthIndex){
      income+=Number(x.price)||0;
      count++;
    }
