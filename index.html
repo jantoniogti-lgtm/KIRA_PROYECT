@@ -9,16 +9,17 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.app{min-height:100vh}
 .sidebar{position:fixed;left:0;top:0;bottom:0;width:245px;background:#0d1014;border-right:1px solid var(--line);padding:16px 12px;z-index:20}.brand{font-size:23px;font-weight:900;padding:10px 12px 25px}.brand b{color:var(--orange)}.nav button{width:100%;border:0;background:transparent;color:#aeb8c2;text-align:left;padding:12px 13px;border-radius:10px;margin:2px 0;font-size:14px}.nav button:hover,.nav button.active{background:#1b2229;color:#fff}.nav button.active{border-left:3px solid var(--orange);padding-left:10px}
 .main{margin-left:245px;padding:22px;max-width:1550px}.top{display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:18px}.top h1{margin:0;font-size:26px}.top p{margin:5px 0 0;color:var(--muted);font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{background:var(--panel);border:1px solid var(--line);color:#fff;border-radius:9px;padding:9px 12px;cursor:pointer}.btn:hover{background:var(--panel2)}.btn.primary{background:var(--orange);border-color:var(--orange);color:#101010;font-weight:800}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px}.label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.3px}.big{font-size:27px;font-weight:900;margin-top:7px}.orange{color:var(--orange)}.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}
+.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.card{background:linear-gradient(145deg,#151a20,#101419);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 8px 22px #0004}.card.clickable{cursor:pointer;transition:.18s transform,.18s border-color}.card.clickable:hover{transform:translateY(-2px);border-color:#46515d}.label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.3px}.big{font-size:27px;font-weight:900;margin-top:7px}.orange{color:var(--orange)}.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}
 .grid2{display:grid;grid-template-columns:1.25fr .75fr;gap:13px;margin-top:13px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px}.panel h2{margin:0 0 13px;font-size:16px}.small{font-size:12px;color:var(--muted)}
 .tablewrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:850px}.table th{font-size:11px;color:var(--muted);text-align:left;padding:9px;border-bottom:1px solid var(--line);white-space:nowrap}.table td{font-size:13px;padding:9px;border-bottom:1px solid #20262c;white-space:nowrap}.table tr:hover{background:#171c21}.table tfoot td{background:#20272e;font-weight:900}.status{display:inline-block;border-radius:20px;padding:4px 8px;font-size:10px;font-weight:900}.s-active{background:#103d2b;color:var(--green)}.s-soon{background:#4a3818;color:var(--yellow)}.s-exp{background:#481d25;color:var(--red)}.s-free{background:#3f3216;color:var(--yellow)}
 .filters{display:grid;grid-template-columns:minmax(220px,1.6fr) repeat(3,minmax(140px,.5fr));gap:8px;margin-bottom:12px}.filters input,.filters select,.form input,.form select{background:#0d1115;color:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}.filterhint{margin-bottom:10px}
 .row{display:flex;justify-content:space-between;gap:10px;align-items:center}.bar{height:9px;background:#252c33;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:var(--orange)}
-.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.kpi{background:#0f1317;border:1px solid var(--line);border-radius:10px;padding:12px}.kpi .v{font-size:21px;font-weight:900;margin-top:4px}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.alert-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.alert{background:#0f1317;border:1px solid var(--line);border-radius:11px;padding:12px;cursor:pointer}.alert:hover{border-color:#46515d}.alert .v{font-size:22px;font-weight:900;margin-top:4px}.search-global{background:#0d1115;color:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 11px;width:250px}.muted-note{color:var(--muted);font-size:11px;margin-top:8px}.kpi{background:#0f1317;border:1px solid var(--line);border-radius:10px;padding:12px}.kpi .v{font-size:21px;font-weight:900;margin-top:4px}
 .modalbg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;z-index:50;padding:15px}.modal{width:min(650px,100%);background:#151a20;border:1px solid var(--line);border-radius:14px;padding:20px}.modal h2{margin-top:0}.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form label{font-size:12px;color:var(--muted)}.modalfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .bottom{display:none}.toast{position:fixed;right:20px;bottom:20px;background:#20272e;border:1px solid var(--line);border-radius:9px;padding:12px 15px;z-index:80;display:none}
+@media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.alert-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:950px){.sidebar{display:none}.main{margin:0;padding:14px 14px 78px}.cards{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.bottom{display:flex;position:fixed;left:0;right:0;bottom:0;background:#101419;border-top:1px solid var(--line);z-index:30}.bottom button{flex:1;background:none;border:0;color:#9ba5af;padding:9px 2px;font-size:10px}.bottom button.active{color:var(--orange)}.form{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.actions{width:100%}}
-@media(max-width:500px){.cards{grid-template-columns:1fr 1fr}.filters{grid-template-columns:1fr}.big{font-size:22px}}
+@media(max-width:650px){.cards{grid-template-columns:1fr 1fr}.alert-grid{grid-template-columns:1fr 1fr}.search-global{width:100%}.filters{grid-template-columns:1fr}.big{font-size:22px}}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
@@ -86,10 +87,10 @@ const fmt=d=>d?new Date(d).toLocaleDateString('es-ES'):'-';
 function days(u){if(!u.end)return 999999;return Math.ceil((new Date(u.end)-TODAY)/86400000)}
 function st(u){let d=days(u);if(d<0)return ['Caducado','s-exp'];if(d<=7)return ['Caduca pronto','s-soon'];return ['Activo','s-active']}
 const UI_KEY='kira-control-ui-v1';
-let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',m:'',s:'user',dir:'asc',need:'all',price:'all',date:'all'},free:{q:'',s:'user',dir:'asc'}};
+let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',m:'',s:'user',dir:'asc',need:'all',price:'all',line:'all'},free:{q:'',s:'user',dir:'asc'}};
 function saveUI(){localStorage.setItem(UI_KEY,JSON.stringify(uiState));}
 function setUIPage(p){uiState.page=p;saveUI();}
-function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
+function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#ul'))$('#ul').value=p.line||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
 function save(){
@@ -182,7 +183,7 @@ function activate(p){document.querySelectorAll('[data-page]').forEach(b=>b.class
 function render(p=uiState.page||'dashboard'){setUIPage(p);activate(p);({dashboard,users,free,renewals,credits,finance,settings}[p]||dashboard)()}
 
 const VIEW_CONFIG={
- dashboard:{title:'Dashboard',items:{cards:'Resumen principal',upcoming:'Próximas caducidades',economics:'Resumen económico',lines:'Control de líneas',status:'Estado'}},
+ dashboard:{title:'Dashboard',items:{cards:'Resumen principal',upcoming:'Próximas caducidades',economics:'Resumen económico',currentMonth:'Mes actual',alerts:'Alertas',creditBalance:'Saldo de créditos',lines:'Control de líneas',status:'Estado'}},
  users:{title:'Clientes de pago',items:{user:'Cliente',line:'Línea / usuario',lineExpiry:'Fin línea',target:'Objetivo Excel',credits:'Créditos',extension:'Ampliación',end:'Caducidad cliente',price:'Precio',status:'Estado',actions:'Acciones'}},
  free:{title:'Gratis / Gasto',items:{user:'Cliente',line:'Línea / usuario',lineExpiry:'Fin línea',target:'Objetivo Excel',credits:'Créditos',extension:'Ampliación',end:'Caducidad cliente',type:'Tipo',actions:'Acciones'}},
  renewals:{title:'Renovaciones',items:{user:'Usuario',type:'Tipo',end:'Caduca',days:'Días',actions:'Acción'}},
@@ -216,48 +217,65 @@ function dashboard(){
  let expired=state.users.filter(u=>days(u)<0).length;
  let t=recalcEconomics(), freeCost=gratis*t.avgLine;
  let purchaseExpense=t.paid;
- let renewalIncome=(Array.isArray(state.renewalHistory)?state.renewalHistory:[]).reduce((a,x)=>a+(Number(x.price)||0),0);
- let income=state.sales.income.reduce((a,b)=>a+b,0)+renewalIncome, expense=state.sales.expense.reduce((a,b)=>a+b,0);
+ let renewalList=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+ let renewalIncome=renewalList.reduce((a,x)=>a+(Number(x.price)||0),0);
+ let income=(state.sales?.income||[]).reduce((a,b)=>a+(Number(b)||0),0)+renewalIncome;
+ let expense=(state.sales?.expense||[]).reduce((a,b)=>a+(Number(b)||0),0);
  let upcoming=[...state.users].filter(u=>days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b)).slice(0,10);
  const currentYear=TODAY.getFullYear(), currentMonth=TODAY.getMonth();
  const monthNames=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
  const currentMonthLabel=`${monthNames[currentMonth]} ${currentYear}`;
- const toRenew=state.users.filter(u=>{const d=String(u.end||'').slice(0,7);return d===`${currentYear}-${String(currentMonth+1).padStart(2,'0')}`}).length;
+ const monthKey=`${currentYear}-${String(currentMonth+1).padStart(2,'0')}`;
+ const dueThisMonth=state.users.filter(u=>String(u.end||'').slice(0,7)===monthKey).length;
  const renewedThisMonth=monthlyRenewalStats(currentMonth,currentYear).count;
- $('#content').innerHTML=header('Dashboard','KIRA CONTROL · 363 usuarios del LISTADO CLI.xlsx',
- `${customButton('dashboard')}<button class="btn primary" onclick="openUser()">＋ Nuevo cliente</button>`)
+ const pendingThisMonth=Math.max(0,dueThisMonth-renewedThisMonth);
+ const mf=monthlyFinance(currentMonth);
+ const creditsNeeded=Number(state.lineTotals?.creditsNeeded||0);
+ const creditBalance=Math.max(0,(t.credits||0)-creditsNeeded);
+ const todayCount=state.users.filter(u=>days(u)>=0&&days(u)<=0).length;
+ const sevenCount=state.users.filter(u=>days(u)>=0&&days(u)<=7).length;
+ const noLine=state.users.filter(u=>!String(u.lineUser||'').trim()).length;
+ const needCredits=state.users.filter(u=>(Number(u.creditsNeeded)||0)>0).length;
+ $('#content').innerHTML=header('Dashboard','KIRA CONTROL · centro de control diario',
+ `${customButton('dashboard')}<button class="btn" onclick="openGlobalSearch()">🔎 Buscar</button><button class="btn primary" onclick="openUser()">＋ Nuevo cliente</button>`)
  +`<div class="cards" data-view-key="cards">
- <div class="card"><div class="label">USUARIOS TOTAL</div><div class="big">${total}</div></div>
- <div class="card"><div class="label">CLIENTES DE PAGO</div><div class="big">${paid}</div></div>
- <div class="card"><div class="label">GRATIS / GASTO</div><div class="big yellow">${gratis}</div></div>
- <div class="card"><div class="label">ACTIVOS / CADUCADOS</div><div class="big"><span class="green">${total-expired}</span> / <span class="red">${expired}</span></div></div>
+ <div class="card clickable" onclick="goUsers('all')"><div class="label">CLIENTES DE PAGO</div><div class="big">${paid}</div><div class="muted-note">Ver clientes</div></div>
+ <div class="card clickable" onclick="goUsersMonth('${monthKey}')"><div class="label">PARA RENOVAR · ${monthNames[currentMonth]}</div><div class="big yellow">${dueThisMonth}</div><div class="muted-note">${pendingThisMonth} pendientes · ${renewedThisMonth} renovados</div></div>
+ <div class="card clickable" onclick="render('renewals')"><div class="label">RENOVADOS · ${monthNames[currentMonth]}</div><div class="big green">${renewedThisMonth}</div><div class="muted-note">Abrir historial</div></div>
+ <div class="card clickable" onclick="render('credits')"><div class="label">CRÉDITOS DISPONIBLES</div><div class="big orange">${num(creditBalance)}</div><div class="muted-note">Tras objetivos Excel</div></div>
+ <div class="card"><div class="label">BENEFICIO · ${monthNames[currentMonth]}</div><div class="big green">${euro(mf.benefit)}</div><div class="muted-note">${euro(mf.avgClient)} / cliente</div></div>
  </div>
  <div class="grid2" data-view-key="upcoming">
- <div class="panel"><h2>⚠️ Próximas caducidades</h2>${upcoming.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Usuario</th><th>Caducidad</th><th>Días</th><th>Estado</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${upcoming.map(u=>{let s=st(u),i=state.users.indexOf(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${fmt(u.end)}</td><td>${days(u)}</td><td><span class="status ${s[1]}">${s[0]}</span></td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small primary" onclick="renew(${i})">🔄 Renovar</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="small">No hay próximas caducidades.</div>'}</div>
+ <div class="panel"><div class="row"><h2>⚠️ Próximas caducidades</h2><button class="btn small" onclick="goUsers('month')">Ver todos</button></div>${upcoming.length?`<div class="tablewrap"><table class="table"><thead><tr><th>Usuario</th><th>Caducidad</th><th>Días</th><th>Estado</th><th data-view-key="actions">Acciones</th></tr></thead><tbody>${upcoming.map(u=>{let ss=st(u),i=state.users.indexOf(u);return `<tr><td><b>${esc(u.user)}</b></td><td>${fmt(u.end)}</td><td>${days(u)}</td><td><span class="status ${ss[1]}">${ss[0]}</span></td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small primary" onclick="renew(${i})">🔄 Renovar</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="small">No hay próximas caducidades.</div>'}</div>
  <div class="panel" data-view-key="economics"><h2>💰 Resumen económico</h2>
- <div class="kpi-grid">
- <div class="kpi"><div class="label">INGRESOS</div><div class="v orange">${euro(income)}</div></div>
- <div class="kpi"><div class="label">GASTOS CRÉDITOS</div><div class="v red">${euro(purchaseExpense)}</div></div>
- <div class="kpi"><div class="label">BENEFICIO</div><div class="v green">${euro(income-purchaseExpense)}</div></div>
- <div class="kpi"><div class="label">COSTE EST. GRATIS</div><div class="v yellow">${euro(freeCost)}</div></div>
- </div>
- <p class="small">Coste estimado de gratis = usuarios gratis × ${euro(t.avgLine)} por línea.</p>
- </div></div>
- <div class="panel" style="margin-top:13px" data-view-key="currentMonth"><h2>📅 ${currentMonthLabel}</h2>
- <div class="kpi-grid">
- <div class="kpi"><div class="label">CLIENTES PARA RENOVAR</div><div class="v yellow">${toRenew}</div><div class="small">Clientes de pago con caducidad en ${monthNames[currentMonth].toLowerCase()}.</div></div>
- <div class="kpi"><div class="label">CLIENTES RENOVADOS</div><div class="v green">${renewedThisMonth}</div><div class="small">Renovaciones registradas en ${monthNames[currentMonth].toLowerCase()}.</div></div>
- </div></div>
- <div class="panel" style="margin-top:13px" data-view-key="lines"><h2>📡 Control de líneas</h2>
- <div class="kpi-grid">
- <div class="kpi"><div class="label">LÍNEAS ASIGNADAS</div><div class="v orange">${state.lineTotals?.withLine||0}</div></div>
- <div class="kpi"><div class="label">CRÉDITOS PARA LLEGAR AL EXCEL</div><div class="v yellow">${state.lineTotals?.creditsNeeded||0}</div></div>
- <div class="kpi"><div class="label">CLIENTES A REVISAR</div><div class="v red">${state.lineTotals?.review||0}</div></div>
- </div>
- <p class="small">El cálculo usa la fecha final del Excel y los paquetes de 1, 3, 6 y 12 meses.</p>
- </div>
- <div class="panel" style="margin-top:13px" data-view-key="status"><h2>📊 Estado</h2><div class="row"><span>Clientes de pago</span><b>${paid}</b></div><div class="bar"><i style="width:${total?paid/total*100:0}%"></i></div><div class="row" style="margin-top:9px"><span>Gratis / gasto</span><b>${gratis}</b></div><div class="bar"><i style="width:${total?gratis/total*100:0}%"></i></div></div>`;
+ <div class="kpi-grid"><div class="kpi"><div class="label">INGRESOS · MES</div><div class="v orange">${euro(mf.income)}</div></div><div class="kpi"><div class="label">GASTOS · MES</div><div class="v red">${euro(mf.expense)}</div></div><div class="kpi"><div class="label">BENEFICIO · MES</div><div class="v green">${euro(mf.benefit)}</div></div><div class="kpi"><div class="label">MEDIA / CLIENTE</div><div class="v yellow">${euro(mf.avgClient)}</div></div></div>
+ <p class="small">Incluye renovaciones registradas en el mes. Las renovaciones no aumentan el número de clientes.</p></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="currentMonth"><div class="row"><h2>📅 ${currentMonthLabel}</h2><span class="status s-active">MES ACTUAL</span></div><div class="kpi-grid"><div class="kpi"><div class="label">CLIENTES PARA RENOVAR</div><div class="v yellow">${dueThisMonth}</div><div class="small">Caducan este mes.</div></div><div class="kpi"><div class="label">CLIENTES RENOVADOS</div><div class="v green">${renewedThisMonth}</div><div class="small">Renovaciones registradas este mes.</div></div><div class="kpi"><div class="label">PENDIENTES DE RENOVAR</div><div class="v red">${pendingThisMonth}</div><div class="small">Caducan este mes y aún no tienen renovación registrada.</div></div><div class="kpi"><div class="label">INGRESOS POR RENOVACIONES</div><div class="v orange">${euro(monthlyRenewalStats(currentMonth,currentYear).income)}</div><div class="small">Solo renovaciones del mes.</div></div></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="alerts"><h2>🚨 Requiere atención</h2><div class="alert-grid"><div class="alert" onclick="goUsers('soon')"><div class="label">CADUCAN EN 7 DÍAS</div><div class="v yellow">${sevenCount}</div></div><div class="alert" onclick="goUsers('all','needed')"><div class="label">CLIENTES CON CRÉDITOS</div><div class="v orange">${needCredits}</div></div><div class="alert" onclick="goUsers('all','all','all','none')"><div class="label">SIN LÍNEA ASIGNADA</div><div class="v red">${noLine}</div></div><div class="alert" onclick="goUsersToday()"><div class="label">CADUCAN HOY</div><div class="v red">${todayCount}</div></div></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="creditBalance"><h2>🪙 Saldo de créditos</h2><div class="kpi-grid"><div class="kpi"><div class="label">COMPRADOS</div><div class="v">${num(t.credits)}</div></div><div class="kpi"><div class="label">NECESARIOS · OBJETIVOS</div><div class="v yellow">${num(creditsNeeded)}</div></div><div class="kpi"><div class="label">DISPONIBLES</div><div class="v green">${num(creditBalance)}</div></div><div class="kpi"><div class="label">GASTADO EN CRÉDITOS</div><div class="v red">${euro(purchaseExpense)}</div></div></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="lines"><h2>📡 Control de líneas</h2><div class="kpi-grid"><div class="kpi"><div class="label">LÍNEAS ASIGNADAS</div><div class="v orange">${state.lineTotals?.withLine||0}</div></div><div class="kpi"><div class="label">CRÉDITOS PARA EXCEL</div><div class="v yellow">${creditsNeeded}</div></div><div class="kpi"><div class="label">CLIENTES A REVISAR</div><div class="v red">${state.lineTotals?.review||0}</div></div><div class="kpi"><div class="label">SIN LÍNEA</div><div class="v red">${noLine}</div></div></div><p class="small">El cálculo usa la fecha final del Excel y los paquetes de 1, 3, 6 y 12 meses.</p></div>
+ <div class="panel" style="margin-top:13px" data-view-key="status"><h2>📊 Estado general</h2><div class="row"><span>Clientes de pago</span><b>${paid}</b></div><div class="bar"><i style="width:${total?paid/total*100:0}%"></i></div><div class="row" style="margin-top:9px"><span>Gratis / gasto</span><b>${gratis}</b></div><div class="bar"><i style="width:${total?gratis/total*100:0}%"></i></div></div>`;
  applyViewPrefs('dashboard');
+}
+
+function goUsers(status='all',need='all',price='all',line='all'){
+ uiState.users=Object.assign({},uiState.users||{},{q:'',f:status,m:'',need,price,line,s:'end',dir:'asc'});saveUI();render('users');
+}
+function goUsersMonth(month){uiState.users=Object.assign({},uiState.users||{},{q:'',f:'all',m:month,need:'all',price:'all',line:'all',s:'end',dir:'asc'});saveUI();render('users')}
+function goUsersToday(){
+ const today=String(TODAY.toISOString().slice(0,10));
+ uiState.users=Object.assign({},uiState.users||{},{q:today,f:'all',m:'',need:'all',price:'all',line:'all',s:'end',dir:'asc'});saveUI();render('users');
+}
+function openGlobalSearch(){
+ $('#modal').innerHTML=`<h2>🔎 Buscar en KIRA CONTROL</h2><p class="small">Busca por cliente, línea, MAC o fecha.</p><input id="globalQ" class="search-global" style="width:100%" placeholder="Escribe para buscar..." oninput="runGlobalSearch()"><div id="globalResults" style="margin-top:12px;max-height:55vh;overflow:auto"></div><div class="modalfoot"><button class="btn" onclick="closeModal()">Cerrar</button></div>`;
+ $('#modalbg').style.display='flex';setTimeout(()=>$('#globalQ')?.focus(),50);runGlobalSearch();
+}
+function runGlobalSearch(){
+ const q=String($('#globalQ')?.value||'').trim().toLowerCase(); const box=$('#globalResults');if(!box)return;
+ if(!q){box.innerHTML='<div class="small">Empieza a escribir para buscar.</div>';return;}
+ const paid=state.users.map((u,i)=>({...u,_i:i,_type:'PAGO'})); const free=state.freeUsers.map((u,i)=>({...u,_i:i,_type:'GRATIS'}));
+ const arr=[...paid,...free].filter(u=>[u.user,u.lineUser,u.mac,u.mac2,u.start,u.end,u.lineExpiry].join(' ').toLowerCase().includes(q)).slice(0,30);
+ box.innerHTML=arr.length?arr.map(u=>`<div class="kpi" style="margin-bottom:7px"><div class="row"><div><b>${esc(u.user)}</b><div class="small">${esc(u.lineUser||'-')} · ${u._type} · Caduca ${fmt(u.end)}</div></div><div class="actions"><button class="btn small" onclick="closeModal();openUser(${u._type==='PAGO'?u._i:'null'},${u._type==='GRATIS'?u._i:'null'})">✏️ Editar</button>${u._type==='PAGO'?`<button class="btn small primary" onclick="closeModal();renew(${u._i})">🔄 Renovar</button>`:''}</div></div></div>`).join(''):'<div class="small">No se han encontrado resultados.</div>';
 }
 
 function users(){
@@ -269,21 +287,23 @@ function users(){
  <input id="um" type="month" title="Ver clientes por mes de caducidad" onchange="filterUsers()">
  <select id="un" onchange="filterUsers()"><option value="all">Créditos: todos</option><option value="needed">⚠️ Necesitan créditos</option><option value="none">✅ Sin créditos pendientes</option></select>
  <select id="up" onchange="filterUsers()"><option value="all">Precio: todos</option><option value="paid">💳 Con precio</option><option value="zero">🆓 Precio 0 €</option></select>
+ <select id="ul" onchange="filterUsers()"><option value="all">Línea: todas</option><option value="with">📡 Con línea</option><option value="none">⚠️ Sin línea</option></select>
  <select id="us" onchange="filterUsers()"><option value="user">Ordenar: usuario</option><option value="start">Fecha alta</option><option value="end">Fecha caducidad</option><option value="price">Precio</option><option value="days">Días restantes</option><option value="credits">Créditos necesarios</option></select>
  <select id="ud" onchange="filterUsers()"><option value="asc">↑ Ascendente</option><option value="desc">↓ Descendente</option></select>
  </div><div class="small filterhint">Filtros combinables · 📅 Mes = mes de caducidad · ⚠️ Créditos = según objetivo Excel.</div><div id="utable"></div></div>`;
  restoreUsersUI();filterUsers();applyViewPrefs('users')
 }
 function filterUsers(){
- let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',need=$('#un')?.value||'all',priceFilter=$('#up')?.value||'all',srt=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
- uiState.users={q:qv,f,m,need,price:priceFilter,s:srt,dir};saveUI();
+ let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',need=$('#un')?.value||'all',priceFilter=$('#up')?.value||'all',lineFilter=$('#ul')?.value||'all',srt=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
+ uiState.users={q:qv,f,m,need,price:priceFilter,line:lineFilter,s:srt,dir};saveUI();
  let arr=state.users.filter(u=>{
    let d=days(u),txt=[u.user,u.lineUser,u.lineExpiry,u.targetExpiry,u.mac,u.mac2,u.start,u.end].join(' ').toLowerCase();
    let ok=f==='all'||(f==='active'&&d>7)||(f==='soon'&&d>=0&&d<=7)||(f==='month'&&d>=0&&d<=30)||(f==='expired'&&d<0);
    let monthOk=!m||String(u.end||'').slice(0,7)===m;
    let creditOk=need==='all'||(need==='needed'&&(Number(u.creditsNeeded)||0)>0)||(need==='none'&&(Number(u.creditsNeeded)||0)<=0);
    let priceOk=priceFilter==='all'||(priceFilter==='paid'&&(Number(u.price)||0)>0)||(priceFilter==='zero'&&(Number(u.price)||0)<=0);
-   return ok&&monthOk&&creditOk&&priceOk&&txt.includes(qv)
+   let lineOk=lineFilter==='all'||(lineFilter==='with'&&String(u.lineUser||'').trim())||(lineFilter==='none'&&!String(u.lineUser||'').trim());
+   return ok&&monthOk&&creditOk&&priceOk&&lineOk&&txt.includes(qv)
  });
  arr.sort((a,b)=>{let av=srt==='user'?String(a.user||'').toLowerCase():srt==='start'?(a.start||''):srt==='end'?(a.end||''):srt==='price'?Number(a.price)||0:srt==='credits'?Number(a.creditsNeeded)||0:days(a),bv=srt==='user'?String(b.user||'').toLowerCase():srt==='start'?(b.start||''):srt==='end'?(b.end||''):srt==='price'?Number(b.price)||0:srt==='credits'?Number(b.creditsNeeded)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
  $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span></td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="deleteUser(${i},null)">🗑️</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
@@ -546,7 +566,7 @@ function closeModal(){$('#modalbg').style.display='none'}
 $('#modalbg').onclick=e=>{if(e.target.id==='modalbg')closeModal()}
 
 function settings(){
- $('#content').innerHTML=header('Datos / Copias','KIRA CONTROL V13 · datos y sincronización',customButton('settings'))
+ $('#content').innerHTML=header('Datos / Copias','KIRA CONTROL V14 · datos y sincronización',customButton('settings'))
  +`<div class="grid2"><div class="panel" data-view-key="backup"><h2>💾 Copias</h2><p class="small">Los cambios manuales se guardan en este navegador. Puedes exportar un respaldo antes de cualquier cambio importante.</p><div class="actions"><button class="btn primary" onclick="exportJSON()">⬇ Exportar JSON</button><label class="btn">⬆ Importar JSON<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label><button class="btn" onclick="resetData()">↩ Restaurar Excel</button></div></div><div class="panel" data-view-key="firebase"><h2>🔥 Estructura preparada para Firebase</h2><p class="small">La aplicación separa clientes de pago, gratis/gasto, renovaciones, créditos y finanzas. Los módulos se guardan en Firebase para sincronización entre móvil y PC cuando la conexión está disponible.</p></div></div>`;applyViewPrefs('settings');
 }
 function exportJSON(){let b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='KIRA_CONTROL_BACKUP.json';a.click()}
