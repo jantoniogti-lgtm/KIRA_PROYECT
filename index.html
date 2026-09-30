@@ -16,7 +16,7 @@
 .row{display:flex;justify-content:space-between;gap:10px;align-items:center}.bar{height:9px;background:#252c33;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:var(--orange)}
 .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.alert-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.alert{background:#0f1317;border:1px solid var(--line);border-radius:11px;padding:12px;cursor:pointer}.alert:hover{border-color:#46515d}.alert .v{font-size:22px;font-weight:900;margin-top:4px}.search-global{background:#0d1115;color:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 11px;width:250px}.muted-note{color:var(--muted);font-size:11px;margin-top:8px}.kpi{background:#0f1317;border:1px solid var(--line);border-radius:10px;padding:12px}.kpi .v{font-size:21px;font-weight:900;margin-top:4px}
 .modalbg{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;z-index:50;padding:15px}.modal{width:min(650px,100%);background:#151a20;border:1px solid var(--line);border-radius:14px;padding:20px}.modal h2{margin-top:0}.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form label{font-size:12px;color:var(--muted)}.modalfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
-.bottom{display:none}.toast{position:fixed;right:20px;bottom:20px;background:#20272e;border:1px solid var(--line);border-radius:9px;padding:12px 15px;z-index:80;display:none}
+.mini-stat{background:#0f1317;border:1px solid var(--line);border-radius:10px;padding:12px}.mini-stat b{font-size:20px}.backup-list{display:grid;gap:8px}.backup-item{display:flex;justify-content:space-between;gap:8px;align-items:center;background:#0f1317;border:1px solid var(--line);padding:9px;border-radius:9px}.history-box{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:8px;background:#0d1115}.history-item{padding:7px 4px;border-bottom:1px solid #20262c;font-size:12px}.history-item:last-child{border-bottom:0}.compare-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.review-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.bottom{display:none}.toast{position:fixed;right:20px;bottom:20px;background:#20272e;border:1px solid var(--line);border-radius:9px;padding:12px 15px;z-index:80;display:none}
 @media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.alert-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:950px){.sidebar{display:none}.main{margin:0;padding:14px 14px 78px}.cards{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.bottom{display:flex;position:fixed;left:0;right:0;bottom:0;background:#101419;border-top:1px solid var(--line);z-index:30}.bottom button{flex:1;background:none;border:0;color:#9ba5af;padding:9px 2px;font-size:10px}.bottom button.active{color:var(--orange)}.form{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.actions{width:100%}}
 @media(max-width:650px){.cards{grid-template-columns:1fr 1fr}.alert-grid{grid-template-columns:1fr 1fr}.search-global{width:100%}.filters{grid-template-columns:1fr}.big{font-size:22px}}
@@ -93,7 +93,19 @@ function setUIPage(p){uiState.page=p;saveUI();}
 function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#ul'))$('#ul').value=p.line||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
+const BACKUP_KEY='kira-control-backups-v1';
+const ACTIVITY_KEY='kira-control-activity-v1';
+function getBackups(){try{return JSON.parse(localStorage.getItem(BACKUP_KEY)||'[]')||[]}catch(e){return []}}
+function createAutoBackup(){try{const list=getBackups();list.unshift({date:new Date().toISOString(),state:JSON.parse(JSON.stringify(state))});localStorage.setItem(BACKUP_KEY,JSON.stringify(list.slice(0,5)));}catch(e){console.warn(e)}}
+function getActivity(){try{return JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'[]')||[]}catch(e){return []}}
+function logActivity(text,type='info'){try{const list=getActivity();list.unshift({date:new Date().toISOString(),text,type});localStorage.setItem(ACTIVITY_KEY,JSON.stringify(list.slice(0,100)));}catch(e){}}
+function restoreBackup(i){const list=getBackups(),b=list[i];if(!b)return;if(!confirm('¿Restaurar esta copia? Los datos actuales serán sustituidos.'))return;state=JSON.parse(JSON.stringify(b.state));save();toast('Copia restaurada');render('dashboard')}
+function downloadBackup(){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='KIRA_CONTROL_BACKUP_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)}
+function firebasePushNow(){if(!firebaseReady){toast('Firebase aún no está conectado');return}kiraRef.set(state).then(()=>{setFirebaseStatus('☁️ Guardado en Firebase · '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}));toast('Firebase actualizado')}).catch(()=>{setFirebaseStatus('⚠️ Error Firebase');toast('Error al guardar en Firebase')})}
+async function firebasePullNow(){if(!firebaseReady){toast('Firebase aún no está conectado');return}if(!confirm('¿Descargar los datos de Firebase y sustituir los datos actuales?'))return;try{const snap=await kiraRef.once('value');if(snap.exists()){createAutoBackup();state=snap.val();state.credits=Array.isArray(state.credits)?state.credits:[];state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];state.viewPrefs=state.viewPrefs||{};state.meta=state.meta||{};localStorage.setItem('kira-control-v7',JSON.stringify(state));logActivity('☁️ Datos descargados desde Firebase','sync');toast('Datos descargados de Firebase');render('dashboard')}}catch(e){toast('No se pudieron descargar los datos')}}
 function save(){
+  createAutoBackup();
+  logActivity('💾 Datos guardados','save');
  state.meta=state.meta||{};
  state.meta.updatedAt=Date.now();
  localStorage.setItem('kira-control-v7',JSON.stringify(state));
@@ -236,6 +248,7 @@ function dashboard(){
  const sevenCount=state.users.filter(u=>days(u)>=0&&days(u)<=7).length;
  const noLine=state.users.filter(u=>!String(u.lineUser||'').trim()).length;
  const needCredits=state.users.filter(u=>(Number(u.creditsNeeded)||0)>0).length;
+ const reviewNoLine=noLine;
  $('#content').innerHTML=header('Dashboard','KIRA CONTROL · centro de control diario',
  `${customButton('dashboard')}<button class="btn" onclick="openGlobalSearch()">🔎 Buscar</button><button class="btn primary" onclick="openUser()">＋ Nuevo cliente</button>`)
  +`<div class="cards" data-view-key="cards">
@@ -251,11 +264,13 @@ function dashboard(){
  <div class="kpi-grid"><div class="kpi"><div class="label">INGRESOS · MES</div><div class="v orange">${euro(mf.income)}</div></div><div class="kpi"><div class="label">GASTOS · MES</div><div class="v red">${euro(mf.expense)}</div></div><div class="kpi"><div class="label">BENEFICIO · MES</div><div class="v green">${euro(mf.benefit)}</div></div><div class="kpi"><div class="label">MEDIA / CLIENTE</div><div class="v yellow">${euro(mf.avgClient)}</div></div></div>
  <p class="small">Incluye renovaciones registradas en el mes. Las renovaciones no aumentan el número de clientes.</p></div></div>
  <div class="panel" style="margin-top:13px" data-view-key="currentMonth"><div class="row"><h2>📅 ${currentMonthLabel}</h2><span class="status s-active">MES ACTUAL</span></div><div class="kpi-grid"><div class="kpi"><div class="label">CLIENTES PARA RENOVAR</div><div class="v yellow">${dueThisMonth}</div><div class="small">Caducan este mes.</div></div><div class="kpi"><div class="label">CLIENTES RENOVADOS</div><div class="v green">${renewedThisMonth}</div><div class="small">Renovaciones registradas este mes.</div></div><div class="kpi"><div class="label">PENDIENTES DE RENOVAR</div><div class="v red">${pendingThisMonth}</div><div class="small">Caducan este mes y aún no tienen renovación registrada.</div></div><div class="kpi"><div class="label">INGRESOS POR RENOVACIONES</div><div class="v orange">${euro(monthlyRenewalStats(currentMonth,currentYear).income)}</div><div class="small">Solo renovaciones del mes.</div></div></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="alerts"><h2>🚨 Requiere atención</h2><div class="alert-grid"><div class="alert" onclick="goUsers('soon')"><div class="label">CADUCAN EN 7 DÍAS</div><div class="v yellow">${sevenCount}</div></div><div class="alert" onclick="goUsers('all','needed')"><div class="label">CLIENTES CON CRÉDITOS</div><div class="v orange">${needCredits}</div></div><div class="alert" onclick="goUsers('all','all','all','none')"><div class="label">SIN LÍNEA ASIGNADA</div><div class="v red">${noLine}</div></div><div class="alert" onclick="goUsersToday()"><div class="label">CADUCAN HOY</div><div class="v red">${todayCount}</div></div></div></div>
+ <div class="panel" style="margin-top:13px" data-view-key="alerts"><h2>🚨 Requiere atención</h2><div class="alert-grid"><div class="alert" onclick="goUsers('soon')"><div class="label">CADUCAN EN 7 DÍAS</div><div class="v yellow">${sevenCount}</div></div><div class="alert" onclick="goUsers('all','needed')"><div class="label">CLIENTES CON CRÉDITOS</div><div class="v orange">${needCredits}</div></div><div class="alert" onclick="goUsers('all','all','all','none')"><div class="label">SIN LÍNEA ASIGNADA</div><div class="v red">${reviewNoLine}</div></div><div class="alert" onclick="goUsersToday()"><div class="label">CADUCAN HOY</div><div class="v red">${todayCount}</div></div></div></div>
  <div class="panel" style="margin-top:13px" data-view-key="creditBalance"><h2>🪙 Saldo de créditos</h2><div class="kpi-grid"><div class="kpi"><div class="label">COMPRADOS</div><div class="v">${num(t.credits)}</div></div><div class="kpi"><div class="label">NECESARIOS · OBJETIVOS</div><div class="v yellow">${num(creditsNeeded)}</div></div><div class="kpi"><div class="label">DISPONIBLES</div><div class="v green">${num(creditBalance)}</div></div><div class="kpi"><div class="label">GASTADO EN CRÉDITOS</div><div class="v red">${euro(purchaseExpense)}</div></div></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="lines"><h2>📡 Control de líneas</h2><div class="kpi-grid"><div class="kpi"><div class="label">LÍNEAS ASIGNADAS</div><div class="v orange">${state.lineTotals?.withLine||0}</div></div><div class="kpi"><div class="label">CRÉDITOS PARA EXCEL</div><div class="v yellow">${creditsNeeded}</div></div><div class="kpi"><div class="label">CLIENTES A REVISAR</div><div class="v red">${state.lineTotals?.review||0}</div></div><div class="kpi"><div class="label">SIN LÍNEA</div><div class="v red">${noLine}</div></div></div><p class="small">El cálculo usa la fecha final del Excel y los paquetes de 1, 3, 6 y 12 meses.</p></div>
+ <div class="panel" style="margin-top:13px" data-view-key="lines"><h2>📡 Control de líneas</h2><div class="kpi-grid"><div class="kpi"><div class="label">LÍNEAS ASIGNADAS</div><div class="v orange">${state.lineTotals?.withLine||0}</div></div><div class="kpi"><div class="label">CRÉDITOS PARA EXCEL</div><div class="v yellow">${creditsNeeded}</div></div><div class="kpi"><div class="label">CLIENTES A REVISAR</div><div class="v red">${state.lineTotals?.review||0}</div></div><div class="kpi"><div class="label">SIN LÍNEA</div><div class="v red">${reviewNoLine}</div></div></div><p class="small">El cálculo usa la fecha final del Excel y los paquetes de 1, 3, 6 y 12 meses.</p></div>
  <div class="panel" style="margin-top:13px" data-view-key="status"><h2>📊 Estado general</h2><div class="row"><span>Clientes de pago</span><b>${paid}</b></div><div class="bar"><i style="width:${total?paid/total*100:0}%"></i></div><div class="row" style="margin-top:9px"><span>Gratis / gasto</span><b>${gratis}</b></div><div class="bar"><i style="width:${total?gratis/total*100:0}%"></i></div></div>`;
- applyViewPrefs('dashboard');
+ const act=getActivity().slice(0,8);
+ const reviewPaid=state.users||[], reviewNoEnd=reviewPaid.filter(u=>!u.end).length, reviewDupUsers=reviewPaid.map(u=>(u.user||'').toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)!==i).length, reviewDupMac=reviewPaid.map(u=>(u.mac||'').toLowerCase()).filter((v,i,a)=>v&&a.indexOf(v)!==i).length;
+ $('#content').insertAdjacentHTML('beforeend',`<div class="grid2" style="margin-top:13px"><div class="panel"><h2>📜 Actividad reciente</h2><div class="history-box">${act.length?act.map(a=>`<div class="history-item"><b>${fmt(a.date)}</b> · ${esc(a.text)}</div>`).join(''):'<div class="small">Sin actividad registrada.</div>'}</div></div><div class="panel"><h2>⚠️ Datos a revisar</h2><div class="review-grid"><div class="mini-stat">Sin línea<br><b class="${reviewNoLine?'red':'green'}">${reviewNoLine}</b></div><div class="mini-stat">Sin caducidad<br><b class="${reviewNoEnd?'red':'green'}">${reviewNoEnd}</b></div><div class="mini-stat">Usuarios duplicados<br><b class="${reviewDupUsers?'red':'green'}">${reviewDupUsers}</b></div><div class="mini-stat">MAC duplicadas<br><b class="${reviewDupMac?'red':'green'}">${reviewDupMac}</b></div></div></div></div>`); applyViewPrefs('dashboard');
 }
 
 function goUsers(status='all',need='all',price='all',line='all'){
@@ -362,7 +377,7 @@ function saveRenewal(i){
  if(price>0)u.price=price;
  state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
  state.renewalHistory.push({id:Date.now(),userId:u.id,user:u.user,date,renewalDate:date,months,price,newEnd:u.end,baseStart:baseDate});
- save(); closeModal(); toast(`Renovación guardada · nueva caducidad ${fmt(newEnd)}`); render('renewals');
+ logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal'); save(); closeModal(); toast(`Renovación guardada · nueva caducidad ${fmt(newEnd)}`); render('renewals');
 }
 function editRenewal(id){
  const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
@@ -381,7 +396,7 @@ function saveEditedRenewal(idx){
  x.date=$('#erdate').value||x.date||x.renewalDate||''; x.renewalDate=x.date; x.months=Number($('#ermonths').value)||12; x.price=Number($('#erprice').value)||0;
  const u=state.users.find(z=>String(z.id)===String(x.userId));
  if(u){ const base=String(u.start||x.baseStart||u.end||'').slice(0,10); const ne=addMonthsToDate(base,x.months); if(ne){x.newEnd=ne;u.end=ne;if(x.price>0)u.price=x.price;} }
- save(); closeModal(); toast('Renovación actualizada'); render('renewals');
+ logActivity(`✏️ Renovación editada · ${x.user} · ${euro(x.price)}`,'renewal'); save(); closeModal(); toast('Renovación actualizada'); render('renewals');
 }
 function recalcEconomics(){
   const list=Array.isArray(state.credits)?state.credits:[];
@@ -411,6 +426,7 @@ function saveCreditPurchase(){
   if(paid<=0 || credits<=0){toast('Introduce importe y créditos');return}
   if(!Array.isArray(state.credits)) state.credits=[];
   state.credits.push({date:$('#cdate').value||new Date(TODAY).toISOString().slice(0,10),paid,credits,lines});
+  logActivity(`💳 Compra de créditos · ${num(credits)} créditos · ${euro(paid)}`,'credit');
   recalcEconomics(); save(); closeModal(); toast('Compra añadida y cálculos actualizados'); render('credits');
 }
 function editCreditPurchase(i){
@@ -432,6 +448,7 @@ function updateCreditPurchase(i){
   if(paid<=0 || credits<=0){toast('Introduce importe y créditos');return}
   if(!state.credits[i])return;
   state.credits[i]={date:$('#cdate').value||new Date(TODAY).toISOString().slice(0,10),paid,credits,lines};
+  logActivity(`✏️ Compra de créditos modificada · ${num(credits)} créditos · ${euro(paid)}`,'credit');
   recalcEconomics(); save(); closeModal(); toast('Compra modificada y cálculos actualizados'); render('credits');
 }
 
@@ -483,7 +500,8 @@ function finance(){
  $('#content').innerHTML=header('Finanzas','Resumen Excel + renovaciones + compras reales de créditos',customButton('finance'))
  +`<div class="cards" data-view-key="summary"><div class="card"><div class="label">INGRESOS</div><div class="big orange">${euro(income)}</div></div><div class="card"><div class="label">GASTOS CRÉDITOS</div><div class="big red">${euro(purchaseExpense)}</div></div><div class="card"><div class="label">BENEFICIO REAL ESTIMADO</div><div class="big green">${euro(income-purchaseExpense)}</div></div><div class="card"><div class="label">COSTE EST. GRATIS ACTUALES</div><div class="big yellow">${euro(freeCost)}</div></div></div>
  <div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Clientes</th><th>Renovaciones</th><th>Beneficio</th><th>Beneficio medio / cliente</th></tr></thead><tbody>${state.months.map((m,i)=>{let f=monthlyFinance(i);return `<tr><td><b>${m}</b></td><td>${euro(f.income)}</td><td>${euro(f.expense)}</td><td>${num(f.clients)}</td><td>${num(f.renewals)}</td><td>${euro(f.benefit)}</td><td><b>${euro(f.avgClient)}</b></td></tr>`}).join('')}</tbody></table></div></div>
- <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let f=monthlyFinance(i);let max=Math.max(...(s.income||[]).map(Number),f.income,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${f.income/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(f.income)}</b></div>`}).join('')}</div>`;applyViewPrefs('finance');
+ <div class="panel" style="margin-top:13px" data-view-key="evolution"><h2>📊 Evolución</h2>${state.months.map((m,i)=>{let f=monthlyFinance(i);let max=Math.max(...(s.income||[]).map(Number),f.income,1);return `<div class="row" style="margin:8px 0"><span style="width:95px">${m}</span><div style="flex:1"><div class="bar"><i style="width:${f.income/max*100}%"></i></div></div><b style="width:85px;text-align:right">${euro(f.income)}</b></div>`}).join('')}</div>`;const nowM=TODAY.getMonth(), prevM=(nowM+11)%12; const nowF=monthlyFinance(nowM), prevF=monthlyFinance(prevM);
+ $('#content').insertAdjacentHTML('beforeend',`<div class="panel" style="margin-top:13px" data-view-key="comparison"><h2>📊 Comparativa mensual</h2><div class="compare-grid"><div class="mini-stat"><span class="small">${state.months[prevM]} → ${state.months[nowM]} · Beneficio</span><br><b>${euro(prevF.benefit)}</b> → <b class="green">${euro(nowF.benefit)}</b></div><div class="mini-stat"><span class="small">Clientes</span><br><b>${num(prevF.clients)}</b> → <b>${num(nowF.clients)}</b></div><div class="mini-stat"><span class="small">Ingresos</span><br><b>${euro(prevF.income)}</b> → <b class="orange">${euro(nowF.income)}</b></div></div></div>`); applyViewPrefs('finance');
 }
 
 function openUser(index=null, freeIndex=null){
@@ -509,6 +527,7 @@ function openUser(index=null, freeIndex=null){
  <span><b>Cliente GRATIS</b><br><small style="color:var(--muted)">No paga, pero se contabiliza como gasto.</small></span>
  </label>
  </div>
+ ${(index!==null&&!isFree)?(()=>{const uid=state.users[index]?.id;const h=getActivity().filter(a=>a.text.includes(state.users[index]?.user||'')).slice(0,8);return `<div class="full" style="grid-column:1/-1"><label>📜 Historial del cliente</label><div class="history-box">${h.length?h.map(a=>`<div class="history-item">${new Date(a.date).toLocaleString('es-ES')} · ${esc(a.text)}</div>`).join(''):'<span class="small">Sin movimientos registrados.</span>'}</div></div>`})():''}
  <div class="modalfoot">
  <button class="btn" onclick="closeModal()">Cancelar</button>
  ${(index!==null || isFree)?`<button class="btn" style="background:#7f1d1d;border-color:#ef4444;color:#fff" onclick="deleteUser(${index===null?'null':index},${isFree?freeIndex:'null'})">🗑️ Eliminar</button>`:''}
@@ -543,6 +562,7 @@ function saveUser(index, freeIndex=null){
    if(isFree) state.freeUsers.push(u);
    else state.users.push(u);
  }
+ logActivity(`${index===null && freeIndex===null?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');
  save();
  closeModal();
  toast(isFree?'Usuario guardado como GRATIS':'Usuario guardado');
@@ -556,6 +576,7 @@ function deleteUser(index, freeIndex=null){
  let name = arr[pos].user || 'este cliente';
  if(!confirm(`¿Seguro que quieres eliminar a ${name}?\n\nEsta acción eliminará el cliente de KIRA CONTROL.`)) return;
  arr.splice(pos,1);
+ logActivity(`🗑️ Eliminado ${name}`,'delete');
  save();
  closeModal();
  toast('Cliente eliminado');
@@ -566,8 +587,12 @@ function closeModal(){$('#modalbg').style.display='none'}
 $('#modalbg').onclick=e=>{if(e.target.id==='modalbg')closeModal()}
 
 function settings(){
- $('#content').innerHTML=header('Datos / Copias','KIRA CONTROL V14 · datos y sincronización',customButton('settings'))
- +`<div class="grid2"><div class="panel" data-view-key="backup"><h2>💾 Copias</h2><p class="small">Los cambios manuales se guardan en este navegador. Puedes exportar un respaldo antes de cualquier cambio importante.</p><div class="actions"><button class="btn primary" onclick="exportJSON()">⬇ Exportar JSON</button><label class="btn">⬆ Importar JSON<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label><button class="btn" onclick="resetData()">↩ Restaurar Excel</button></div></div><div class="panel" data-view-key="firebase"><h2>🔥 Estructura preparada para Firebase</h2><p class="small">La aplicación separa clientes de pago, gratis/gasto, renovaciones, créditos y finanzas. Los módulos se guardan en Firebase para sincronización entre móvil y PC cuando la conexión está disponible.</p></div></div>`;applyViewPrefs('settings');
+ const backups=getBackups(), act=getActivity().slice(0,20);
+ const paid=state.users||[], noLine=paid.filter(u=>!u.lineUser).length, noEnd=paid.filter(u=>!u.end).length;
+ $('#content').innerHTML=header('Datos / Copias','KIRA CONTROL V15 · seguridad, Firebase e historial',customButton('settings'))
+ +`<div class="grid2"><div class="panel" data-view-key="backup"><h2>💾 Copias de seguridad</h2><p class="small">Se conserva automáticamente un máximo de 5 copias locales antes de guardar cambios.</p><div class="actions"><button class="btn primary" onclick="downloadBackup()">⬇ Descargar copia</button><label class="btn">⬆ Importar JSON<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label><button class="btn" onclick="resetData()">↩ Restaurar Excel</button></div><div class="backup-list" style="margin-top:10px">${backups.length?backups.map((b,i)=>`<div class="backup-item"><span>${fmt(b.date)} ${new Date(b.date).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span><button class="btn small" onclick="restoreBackup(${i})">Restaurar</button></div>`).join(''):'<div class="small">Aún no hay copias automáticas.</div>'}</div></div><div class="panel" data-view-key="firebase"><h2>☁️ Centro Firebase</h2><p class="small">Estado: <b id="settingsFirebaseStatus">${firebaseReady?'Conectado':'Conectando...'}</b></p><div class="actions"><button class="btn primary" onclick="firebasePushNow()">☁️ Guardar ahora</button><button class="btn" onclick="firebasePullNow()">🔄 Descargar de Firebase</button></div><p class="small" style="margin-top:10px">Última actualización local: ${state.meta?.updatedAt?fmt(state.meta.updatedAt):'-'}</p></div></div>`
+ +`<div class="panel" style="margin-top:13px" data-view-key="review"><h2>⚠️ Datos a revisar</h2><div class="review-grid"><div class="mini-stat">Clientes sin línea<br><b class="${noLine?'red':'green'}">${noLine}</b></div><div class="mini-stat">Sin fecha de caducidad<br><b class="${noEnd?'red':'green'}">${noEnd}</b></div></div></div>`
+ +`<div class="panel" style="margin-top:13px" data-view-key="activity"><h2>📋 Historial de actividad</h2><div class="history-box">${act.length?act.map(a=>`<div class="history-item"><b>${new Date(a.date).toLocaleString('es-ES')}</b> · ${esc(a.text)}</div>`).join(''):'<div class="small">Sin actividad.</div>'}</div></div>`; applyViewPrefs('settings');
 }
 function exportJSON(){let b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='KIRA_CONTROL_BACKUP.json';a.click()}
 function importJSON(inp){let f=inp.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);save();toast('Importado');render('dashboard')}catch(e){toast('JSON no válido')}};r.readAsText(f)}
