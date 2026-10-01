@@ -81,13 +81,22 @@ state.meta=state.meta||{};
 // Renovaciones: una sola por cliente y fecha. Elimina duplicados heredados
 // y evita que un doble clic vuelva a contabilizar la misma renovación.
 function renewalKey(x){
-  const who=(x.userId!=null && x.userId!=='')?('id:'+String(x.userId)):('user:'+String(x.user||'').trim().toLowerCase());
-  const date=String(x.date||x.renewalDate||'').slice(0,10);
+  // Una renovación se identifica SIEMPRE por cliente normalizado + fecha.
+  // No usamos el id porque versiones anteriores podían tener ids distintos para el mismo cliente.
+  const who=String(x?.user||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const date=String(x?.date||x?.renewalDate||'').slice(0,10);
   return who+'|'+date;
 }
 function dedupeRenewalHistory(list){
   const src=Array.isArray(list)?list:[], map=new Map();
-  src.forEach(x=>{if(!x)return; const k=renewalKey(x); if(!k.endsWith('|')) map.set(k,x);});
+  src.forEach(x=>{
+    if(!x) return;
+    const k=renewalKey(x);
+    if(k.endsWith('|')) return;
+    const prev=map.get(k);
+    // Conservamos el registro más reciente/útil del duplicado.
+    if(!prev || Number(x.id||0)>=Number(prev.id||0) || String(x.newEnd||'')>String(prev.newEnd||'')) map.set(k,x);
+  });
   return Array.from(map.values());
 }
 state.renewalHistory=dedupeRenewalHistory(state.renewalHistory);
@@ -386,9 +395,26 @@ function saveRenewal(i){
  state.renewalHistory=dedupeRenewalHistory(state.renewalHistory);
  const userId=(u.id!=null&&u.id!=='')?u.id:null;
  const who=userId!=null?('id:'+String(userId)):('user:'+String(u.user||'').trim().toLowerCase());
- const existing=state.renewalHistory.find(x=>renewalKey({userId:x.userId,user:x.user,date})===who+'|'+String(date).slice(0,10));
+ const existing=state.renewalHistory.find(x=>renewalKey(x)===renewalKey({user:u.user,date}));
+ // Si ya existe esa misma renovación, no creamos otra. Si todavía no se aplicó a la caducidad,
+ // aprovechamos el mismo registro y la aplicamos ahora. Si ya está aplicada, no volvemos a sumar años.
  if(existing){
-   toast('⚠️ Esta renovación ya está registrada para este cliente y fecha. Usa ✏️ Editar para modificarla.');
+   const currentEnd=String(u.end||'').slice(0,10);
+   const existingEnd=String(existing.newEnd||'').slice(0,10);
+   if(existingEnd && existingEnd!==currentEnd && existingEnd>currentEnd){
+     toast('⚠️ Esta renovación ya está aplicada. No se vuelve a sumar para evitar duplicarla.');
+     return;
+   }
+   const baseDate=currentEnd || String(u.start||'').slice(0,10);
+   const newEnd=addMonthsToDate(baseDate,months);
+   if(!newEnd){toast('El cliente no tiene una fecha válida de caducidad/inicio');return;}
+   existing.userId=userId; existing.user=u.user; existing.date=date; existing.renewalDate=date;
+   existing.months=months; existing.price=price; existing.baseDate=baseDate; existing.baseStart=baseDate; existing.newEnd=newEnd;
+   u.end=newEnd;
+   if(price>0)u.price=price;
+   state.renewalHistory=dedupeRenewalHistory(state.renewalHistory);
+   logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal');
+   save().then(ok=>{ closeModal(); toast(ok?'Renovación actualizada y sincronizada':'Renovación actualizada localmente · error al sincronizar Firebase'); render('renewals'); });
    return;
  }
  // La nueva caducidad parte SIEMPRE de la caducidad actual del cliente.
