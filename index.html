@@ -380,7 +380,15 @@ async function saveRenewal(i){
  u.end=newEnd; u.price=price; u.yearStatus='renewed'; u.yearStatusDate=date;
  addLifecycle(u,'renewal',date,{months,price,newEnd,baseEnd});
  logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal');
- await save(); closeModal(); toast(`Renovado hasta ${fmt(newEnd)}`); render('renewals');
+ closeModal();
+ toast(`Renovado hasta ${fmt(newEnd)}`);
+ render('renewals');
+ const saved = await save();
+ if(saved){
+   render('renewals');
+ }else{
+   toast('Renovación guardada localmente · error al sincronizar Firebase');
+ }
 }
 
 async function saveEditedRenewal(idx){
@@ -404,7 +412,12 @@ async function saveEditedRenewal(idx){
  const newMi=monthIndex(newDate);if(newMi>=0&&newMi<12)b.income[newMi]=(Number(b.income[newMi])||0)+newPrice;
  const bi=b.renewals.findIndex(r=>r===target);if(bi>=0)b.renewals[bi]=target;else b.renewals.push(target);
  if(u){u.end=newEnd;u.price=newPrice;u.yearStatus='renewed';u.yearStatusDate=newDate;}
- await save();closeModal();toast('Renovación actualizada');render('renewals');
+ closeModal();
+ toast('Renovación actualizada');
+ render('renewals');
+ const saved = await save();
+ if(saved) render('renewals');
+ else toast('Cambios guardados localmente · error al sincronizar Firebase');
 }
 
 function recalcEconomics(){
@@ -528,10 +541,18 @@ async function saveUser(index, freeIndex=null){
    b.newClients=Array.isArray(b.newClients)?b.newClients:[];
    b.renewals=Array.isArray(b.renewals)?b.renewals:[];
    const keyUser=normKey(u.user), year=Number(state.year||2026), d=String(u.yearStatusDate||'').slice(0,10);
-   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
+   // La clasificación manual sustituye la clasificación anterior del mismo cliente/año.
+   // IMPORTANTE: si pasa de NUEVO a RENOVADO, no debe seguir contando como nuevo.
+   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
    b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
-   if(status==='new' && d){ b.newClients.push({id:u.id,user:u.user,date:d,year,price:0,manualClassification:true}); addLifecycle(u,'new',d,{manual:true}); }
-   if(status==='renewed' && d){ b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true}); addLifecycle(u,'renewal',d,{manual:true}); }
+   if(status==='new' && d){
+     b.newClients.push({id:u.id,user:u.user,date:d,year,price:0,manualClassification:true});
+     addLifecycle(u,'new',d,{manual:true});
+   }
+   if(status==='renewed' && d){
+     b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
+     addLifecycle(u,'renewal',d,{manual:true});
+   }
  }
  logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');await save();closeModal();toast(isNew?'Nuevo cliente guardado':'Usuario guardado');render(isFree?'free':'users');
 }
