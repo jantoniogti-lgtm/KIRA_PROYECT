@@ -544,17 +544,28 @@ async function saveUser(index, freeIndex=null){
    // La clasificación manual sustituye la clasificación anterior del mismo cliente/año.
    // IMPORTANTE: si pasa de NUEVO a RENOVADO, no debe seguir contando como nuevo.
    b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
+   // Si antes se había marcado manualmente como RENOVADO, elimina esa falsa renovación.
+   // Las renovaciones reales (cobradas desde el botón Renovar) se conservan.
    b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
+   state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
+   state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===keyUser && Number(e.year)===year && e.manual));
    if(status==='new' && d){
      b.newClients.push({id:u.id,user:u.user,date:d,year,price:0,manualClassification:true});
      addLifecycle(u,'new',d,{manual:true});
    }
    if(status==='renewed' && d){
-     b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
+     // IMPORTANTE: una clasificación manual como RENOVADO NO es una renovación cobrada.
+     // No se añade a b.renewals, porque eso alteraría RENOVADOS, CLIENTES e ingresos.
+     // Solo se guarda el estado visual/histórico del cliente.
      addLifecycle(u,'renewal',d,{manual:true});
    }
  }
- logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');await save();closeModal();toast(isNew?'Nuevo cliente guardado':'Usuario guardado');render(isFree?'free':'users');
+ logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');
+ // Cerrar el editor inmediatamente al pulsar GUARDAR.
+ closeModal();
+ await save();
+ toast(isNew?'Nuevo cliente guardado':'Usuario guardado');
+ render(isFree?'free':'users');
 }
 
 async function cancelUser(index){
