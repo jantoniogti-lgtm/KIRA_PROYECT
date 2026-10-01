@@ -339,26 +339,74 @@ function addMonthsToDate(dateStr, months){
  return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,last)).padStart(2,'0')}`;
 }
 async function saveRenewal(i){
- const u=state.users[i]; if(!u)return; const months=Number($('#rmonths').value)||12, price=Number($('#rprice').value)||0, date=$('#rdate').value||todayISO();
+ const u=state.users[i]; if(!u){toast('Cliente no encontrado');return;}
+ const months=Number($('#rmonths').value)||12;
+ const price=Number($('#rprice').value)||0;
+ const date=$('#rdate').value||todayISO();
+ const key=normKey(u.user)+'|'+date;
  state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
- const key=normKey(u.user)+'|'+date; const existing=state.renewalHistory.find(x=>normKey(x.user)+'|'+String(x.date).slice(0,10)===key);
- if(existing){toast('⚠️ Esa renovación ya está registrada.');return;}
- const newEnd=addMonthsToDate(String(u.end).slice(0,10),months);
- u.end=newEnd; u.price=price; u.yearStatus='renewed';
- const rec={id:Date.now(),user:u.user,date,months,price,newEnd,year:Number(state.year||2026)};
- state.renewalHistory.push(rec); addLifecycle(u,'renewal',date,{months,price,newEnd});
- const b=currentBook(),mi=monthIndex(date); if(mi>=0&&mi<12){b.renewals.push(rec);b.income[mi]=(Number(b.income[mi])||0)+price;}
+ const b=currentBook();
+ b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+ // Elimina duplicados existentes: una sola renovación por cliente y fecha.
+ const histByKey=new Map();
+ state.renewalHistory.forEach(x=>{const k=normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10); if(k && k!=='|') histByKey.set(k,x);});
+ state.renewalHistory=Array.from(histByKey.values());
+ const bookByKey=new Map();
+ b.renewals.forEach(x=>{const k=normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10); if(k && k!=='|') bookByKey.set(k,x);});
+ b.renewals=Array.from(bookByKey.values());
+ let existing=state.renewalHistory.find(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
+ const existingBook=b.renewals.find(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
+ let baseEnd=existing?.baseEnd || existingBook?.baseEnd || '';
+ if(!baseEnd){
+   // Si ya existía una renovación antigua sin baseEnd, retrocede su duración una sola vez.
+   baseEnd=existing?.newEnd ? addMonthsToDate(String(existing.newEnd).slice(0,10),-(Number(existing.months)||12)) : String(u.end||'').slice(0,10);
+   if(!baseEnd) baseEnd=String(u.end||'').slice(0,10);
+ }
+ const newEnd=addMonthsToDate(baseEnd,months);
+ if(!newEnd){toast('No se puede calcular la nueva caducidad');return;}
+ // Si es una renovación ya existente, sustituye sus datos; NO vuelve a sumar otro año.
+ const rec=existing||{id:Date.now()+Math.random(),user:u.user,year:Number(state.year||2026)};
+ rec.user=u.user; rec.userId=u.id; rec.date=date; rec.renewalDate=date; rec.months=months; rec.price=price; rec.baseEnd=baseEnd; rec.newEnd=newEnd; rec.year=Number(state.year||2026);
+ if(existing){
+   const oldPrice=Number(existing.price)||0;
+   const miOld=monthIndex(existing.date||existing.renewalDate);
+   if(miOld>=0&&miOld<12)b.income[miOld]=(Number(b.income[miOld])||0)-oldPrice;
+   const pos=state.renewalHistory.findIndex(x=>x===existing); if(pos>=0)state.renewalHistory[pos]=rec;
+ }else state.renewalHistory.push(rec);
+ // Sustituye el registro financiero de esa misma renovación.
+ const bi=b.renewals.findIndex(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
+ if(bi>=0)b.renewals[bi]=rec; else b.renewals.push(rec);
+ const mi=monthIndex(date); if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
+ u.end=newEnd; u.price=price; u.yearStatus='renewed'; u.yearStatusDate=date;
+ addLifecycle(u,'renewal',date,{months,price,newEnd,baseEnd});
  logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal');
  await save(); closeModal(); toast(`Renovado hasta ${fmt(newEnd)}`); render('renewals');
 }
 
-function saveEditedRenewal(idx){
+async function saveEditedRenewal(idx){
  const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; const x=list[idx]; if(!x)return;
- x.date=$('#erdate').value||x.date||x.renewalDate||''; x.renewalDate=x.date; x.months=Number($('#ermonths').value)||12; x.price=Number($('#erprice').value)||0;
- const u=state.users.find(z=>String(z.id)===String(x.userId));
- if(u){ const base=String(u.start||x.baseStart||u.end||'').slice(0,10); const ne=addMonthsToDate(base,x.months); if(ne){x.newEnd=ne;u.end=ne;if(x.price>0)u.price=x.price;} }
- save(); closeModal(); toast('Renovación actualizada'); render('renewals');
+ const oldDate=String(x.date||x.renewalDate||'').slice(0,10), oldPrice=Number(x.price)||0;
+ const newDate=$('#erdate').value||oldDate;
+ const newMonths=Number($('#ermonths').value)||12;
+ const newPrice=Number($('#erprice').value)||0;
+ const u=state.users.find(z=>normKey(z.user)===normKey(x.user));
+ const baseEnd=x.baseEnd || (x.newEnd?addMonthsToDate(String(x.newEnd).slice(0,10),-(Number(x.months)||12)):String(u?.end||'').slice(0,10));
+ const newEnd=addMonthsToDate(baseEnd,newMonths);
+ if(!newEnd){toast('No se puede calcular la nueva caducidad');return;}
+ // Eliminar cualquier duplicado que pudiera existir de la nueva clave, conservando esta renovación.
+ const newKey=normKey(x.user)+'|'+newDate;
+ state.renewalHistory=state.renewalHistory.filter((r,pos)=>pos===idx || normKey(r.user)+'|'+String(r.date||r.renewalDate||'').slice(0,10)!==newKey);
+ const target=state.renewalHistory.find(r=>r===x)||x;
+ target.date=newDate;target.renewalDate=newDate;target.months=newMonths;target.price=newPrice;target.baseEnd=baseEnd;target.newEnd=newEnd;
+ const b=currentBook(); b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+ b.renewals=b.renewals.filter((r,pos)=>normKey(r.user)+'|'+String(r.date||r.renewalDate||'').slice(0,10)!==newKey || r===target);
+ const oldMi=monthIndex(oldDate);if(oldMi>=0&&oldMi<12)b.income[oldMi]=(Number(b.income[oldMi])||0)-oldPrice;
+ const newMi=monthIndex(newDate);if(newMi>=0&&newMi<12)b.income[newMi]=(Number(b.income[newMi])||0)+newPrice;
+ const bi=b.renewals.findIndex(r=>r===target);if(bi>=0)b.renewals[bi]=target;else b.renewals.push(target);
+ if(u){u.end=newEnd;u.price=newPrice;u.yearStatus='renewed';u.yearStatusDate=newDate;}
+ await save();closeModal();toast('Renovación actualizada');render('renewals');
 }
+
 function recalcEconomics(){
   const list=Array.isArray(state.credits)?state.credits:[];
   const paid=list.reduce((a,x)=>a+(Number(x.paid)||0),0);
