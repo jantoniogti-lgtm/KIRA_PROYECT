@@ -349,7 +349,7 @@ function renewals(){
 }
 function renew(i){
  const u=state.users[i]; if(!u)return;
- $('#modal').innerHTML=`<h2>🔄 Renovar cliente</h2><p class="small"><b>${esc(u.user)}</b> · Caducidad actual: ${fmt(u.end)}</p>
+ $('#modal').innerHTML=`<h2>🔄 Renovar cliente</h2><p class="small"><b>${esc(u.user)}</b> · Caducidad actual: ${fmt(u.end)} · La renovación se añadirá desde esa fecha.</p>
  <div class="form">
   <label>Duración<select id="rmonths"><option value="1">1 mes</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12" selected>12 meses</option></select></label>
   <label>Precio cobrado (€)<input id="rprice" type="number" min="0" step="0.01" value="${Number(u.price)||0}"></label>
@@ -369,16 +369,18 @@ function addMonthsToDate(dateStr, months){
 function saveRenewal(i){
  const u=state.users[i]; if(!u)return;
  const months=Number($('#rmonths').value)||12, price=Number($('#rprice').value)||0, date=$('#rdate').value||new Date(TODAY).toISOString().slice(0,10);
- // La renovación siempre añade la duración a la FECHA DE INICIO del cliente, no a la fecha del día ni a la caducidad actual.
+ // La renovación se calcula desde la fecha de caducidad que ya tiene el cliente.
+ // Nunca se toma la fecha del día. Si no existe caducidad, se usa la fecha de inicio como respaldo.
+ const endDate=String(u.end||'').slice(0,10);
  const startDate=String(u.start||'').slice(0,10);
- const baseDate=startDate || String(u.end||'').slice(0,10);
+ const baseDate=endDate || startDate;
  const newEnd=addMonthsToDate(baseDate,months);
  if(!newEnd){toast('El cliente no tiene una fecha de inicio válida');return;}
  u.end=newEnd;
  if(price>0)u.price=price;
  state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
  const renewalId=Date.now();
- state.renewalHistory.push({id:renewalId,userId:(u.id!=null&&u.id!=='')?u.id:null,user:u.user,date,renewalDate:date,months,price,newEnd:u.end,baseStart:baseDate});
+ state.renewalHistory.push({id:renewalId,userId:(u.id!=null&&u.id!=='')?u.id:null,user:u.user,date,renewalDate:date,months,price,newEnd:u.end,baseStart:baseDate,baseDate});
  logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal'); save().then(ok=>{ closeModal(); toast(ok?'Renovación guardada y sincronizada':'Renovación guardada localmente · error al sincronizar Firebase'); render('renewals'); });
 }
 function editRenewal(id){
@@ -397,7 +399,7 @@ function saveEditedRenewal(idx){
  const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; const x=list[idx]; if(!x)return;
  x.date=$('#erdate').value||x.date||x.renewalDate||''; x.renewalDate=x.date; x.months=Number($('#ermonths').value)||12; x.price=Number($('#erprice').value)||0;
  const u=state.users.find(z=>(x.userId!=null && String(z.id)===String(x.userId)) || String(z.user||'')===String(x.user||''));
- if(u){ const base=String(u.start||x.baseStart||u.end||'').slice(0,10); const ne=addMonthsToDate(base,x.months); if(ne){x.newEnd=ne;u.end=ne;if(x.price>0)u.price=x.price;} }
+ if(u){ const base=String(u.end||x.baseStart||u.start||'').slice(0,10); const ne=addMonthsToDate(base,x.months); if(ne){x.newEnd=ne;u.end=ne;if(x.price>0)u.price=x.price;} }
  logActivity(`✏️ Renovación editada · ${x.user} · ${euro(x.price)}`,'renewal'); save().then(ok=>{ closeModal(); toast(ok?'Renovación actualizada y sincronizada':'Renovación actualizada localmente · error al sincronizar Firebase'); render('renewals'); });
 }
 function recalcEconomics(){
