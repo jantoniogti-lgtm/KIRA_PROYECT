@@ -418,7 +418,7 @@ function renewalDateParts(value){
 }
 function monthlyRenewalStats(monthIndex, year=state.year){const b=state.yearBooks?.[String(year)]||blankYearBook();const list=Array.isArray(b.renewals)?b.renewals:[];return {income:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).reduce((a,x)=>a+(Number(x.price)||0),0),count:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).length}}
 function monthIndexOfDate(v){const d=String(v||'').slice(0,10);const m=d.match(/^\d{4}-(\d{2})-/);return m?Number(m[1])-1:-1}
-function monthlyFinance(monthIndex){const b=currentBook();const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0,clients=Number(b.lines?.[monthIndex])||0,benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals:(b.renewals||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length,newClients:(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length,cancellations:(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length}}
+function monthlyFinance(monthIndex){const b=currentBook();const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0;const renewals=(b.renewals||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const newClients=(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const cancellations=(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const baseClients=Number(b.lines?.[monthIndex])||0;const clients=Math.max(0,baseClients+newClients+renewals-cancellations);const benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals,newClients,cancellations}}
 
 function finance(){
  const b=currentBook(), totalIncome=b.income.reduce((a,v)=>a+(Number(v)||0),0), totalExpense=b.expense.reduce((a,v)=>a+(Number(v)||0),0), totalBenefit=totalIncome-totalExpense;
@@ -447,6 +447,12 @@ function openUser(index=null, freeIndex=null){
  <label>Fecha caducidad<input id="fend" type="date" value="${u.end?u.end.slice(0,10):''}"></label>
  <label>MAC<input id="fmac" value="${esc(u.mac)}"></label>
  <label>MAC 2<input id="fmac2" value="${esc(u.mac2)}"></label>
+ <label>Clasificación ${Number(state.year||2026)}<select id="fstatus">
+ <option value="" ${(u.yearStatus||'')===''?'selected':''}>Sin clasificar</option>
+ <option value="new" ${u.yearStatus==='new'?'selected':''}>🟢 NUEVO</option>
+ <option value="renewed" ${u.yearStatus==='renewed'?'selected':''}>🟡 RENOVADO</option>
+ </select></label>
+ <label>Fecha de clasificación<input id="fstatusdate" type="date" value="${u.yearStatusDate?String(u.yearStatusDate).slice(0,10):(u.start?String(u.start).slice(0,10):todayISO())}"></label>
  <label class="full" style="display:flex;align-items:center;gap:9px;background:#0d1115;border:1px solid var(--line);padding:11px;border-radius:8px;color:#fff">
  <input id="ffree" type="checkbox" ${isFree?'checked':''} style="width:18px;height:18px;margin:0;accent-color:var(--orange)">
  <span><b>Cliente GRATIS</b><br><small style="color:var(--muted)">No paga, pero se contabiliza como gasto.</small></span>
@@ -462,11 +468,23 @@ function openUser(index=null, freeIndex=null){
 async function saveUser(index, freeIndex=null){
  let isEditingFree=freeIndex!==null&&freeIndex!==undefined, isFree=$('#ffree').checked;
  let old=isEditingFree?state.freeUsers[freeIndex]:(index!==null?state.users[index]:null);
- let u={id:old?.id||(Date.now()+Math.random()),user:$('#fuser').value.trim(),price:isFree?0:(Number($('#fprice').value)||0),start:$('#fstart').value,end:$('#fend').value,mac:$('#fmac').value.trim(),mac2:$('#fmac2').value.trim(),k:isFree?2:''};
+ let status=isFree?'':($('#fstatus').value||'');
+ let statusDate=isFree?'':($('#fstatusdate').value||$('#fstart').value||todayISO());
+ let u={id:old?.id||(Date.now()+Math.random()),user:$('#fuser').value.trim(),price:isFree?0:(Number($('#fprice').value)||0),start:$('#fstart').value,end:$('#fend').value,mac:$('#fmac').value.trim(),mac2:$('#fmac2').value.trim(),k:isFree?2:'',yearStatus:status,yearStatusDate:statusDate};
  if(!u.user){toast('Falta el usuario');return;}
  const isNew=!old;
  if(isEditingFree){state.freeUsers.splice(freeIndex,1);isFree?state.freeUsers.push(u):state.users.push(u);} else if(index!==null){state.users.splice(index,1);isFree?state.freeUsers.push(u):state.users.push(u);} else {isFree?state.freeUsers.push(u):state.users.push(u);}
- if(isNew&&!isFree){const date=u.start||todayISO();addLifecycle(u,'new',date);currentBook().newClients.push({id:u.id,user:u.user,date,year:Number(state.year||2026),price:u.price});if(monthIndex(date)>=0){currentBook().income[monthIndex(date)]=(Number(currentBook().income[monthIndex(date)])||0)+Number(u.price||0);}}
+ if(isNew&&!isFree){const date=u.start||todayISO();u.yearStatus='new';u.yearStatusDate=date;addLifecycle(u,'new',date);currentBook().newClients.push({id:u.id,user:u.user,date,year:Number(state.year||2026),price:u.price});if(monthIndex(date)>=0){currentBook().income[monthIndex(date)]=(Number(currentBook().income[monthIndex(date)])||0)+Number(u.price||0);}}
+ else if(!isFree){
+   const b=currentBook();
+   b.newClients=Array.isArray(b.newClients)?b.newClients:[];
+   b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+   const keyUser=normKey(u.user), year=Number(state.year||2026), d=String(u.yearStatusDate||'').slice(0,10);
+   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
+   b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
+   if(status==='new' && d){ b.newClients.push({id:u.id,user:u.user,date:d,year,price:0,manualClassification:true}); addLifecycle(u,'new',d,{manual:true}); }
+   if(status==='renewed' && d){ b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true}); addLifecycle(u,'renewal',d,{manual:true}); }
+ }
  logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');await save();closeModal();toast(isNew?'Nuevo cliente guardado':'Usuario guardado');render(isFree?'free':'users');
 }
 
