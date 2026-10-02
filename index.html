@@ -339,58 +339,64 @@ function addMonthsToDate(dateStr, months){
  return `${ny}-${String(nm).padStart(2,'0')}-${String(Math.min(d,last)).padStart(2,'0')}`;
 }
 async function saveRenewal(i){
- const u=state.users[i]; if(!u){toast('Cliente no encontrado');return;}
- const months=Number($('#rmonths').value)||12;
- const price=Number($('#rprice').value)||0;
- const date=$('#rdate').value||todayISO();
- const key=normKey(u.user)+'|'+date;
- state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
- const b=currentBook();
- b.renewals=Array.isArray(b.renewals)?b.renewals:[];
- // Elimina duplicados existentes: una sola renovación por cliente y fecha.
- const histByKey=new Map();
- state.renewalHistory.forEach(x=>{const k=normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10); if(k && k!=='|') histByKey.set(k,x);});
- state.renewalHistory=Array.from(histByKey.values());
- const bookByKey=new Map();
- b.renewals.forEach(x=>{const k=normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10); if(k && k!=='|') bookByKey.set(k,x);});
- b.renewals=Array.from(bookByKey.values());
- let existing=state.renewalHistory.find(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
- const existingBook=b.renewals.find(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
- let baseEnd=existing?.baseEnd || existingBook?.baseEnd || '';
- if(!baseEnd){
-   // Si ya existía una renovación antigua sin baseEnd, retrocede su duración una sola vez.
-   baseEnd=existing?.newEnd ? addMonthsToDate(String(existing.newEnd).slice(0,10),-(Number(existing.months)||12)) : String(u.end||'').slice(0,10);
-   if(!baseEnd) baseEnd=String(u.end||'').slice(0,10);
- }
- const newEnd=addMonthsToDate(baseEnd,months);
- if(!newEnd){toast('No se puede calcular la nueva caducidad');return;}
- // Si es una renovación ya existente, sustituye sus datos; NO vuelve a sumar otro año.
- const rec=existing||{id:Date.now()+Math.random(),user:u.user,year:Number(state.year||2026)};
- rec.user=u.user; rec.userId=u.id; rec.date=date; rec.renewalDate=date; rec.months=months; rec.price=price; rec.baseEnd=baseEnd; rec.newEnd=newEnd; rec.year=Number(state.year||2026);
- if(existing){
-   const oldPrice=Number(existing.price)||0;
-   const miOld=monthIndex(existing.date||existing.renewalDate);
-   if(miOld>=0&&miOld<12)b.income[miOld]=(Number(b.income[miOld])||0)-oldPrice;
-   const pos=state.renewalHistory.findIndex(x=>x===existing); if(pos>=0)state.renewalHistory[pos]=rec;
- }else state.renewalHistory.push(rec);
- // Sustituye el registro financiero de esa misma renovación.
- const bi=b.renewals.findIndex(x=>normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10)===key);
- if(bi>=0)b.renewals[bi]=rec; else b.renewals.push(rec);
- const mi=monthIndex(date); if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
- u.end=newEnd; u.price=price; u.yearStatus='renewed'; u.yearStatusDate=date;
- addLifecycle(u,'renewal',date,{months,price,newEnd,baseEnd});
- logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal');
- closeModal();
- toast(`Renovado hasta ${fmt(newEnd)}`);
- render('renewals');
- const saved = await save();
- if(saved){
+ const u=state.users[i];
+ if(!u){toast('Cliente no encontrado');return;}
+ try{
+   const months=Number($('#rmonths')?.value)||12;
+   const price=Number($('#rprice')?.value)||0;
+   const date=$('#rdate')?.value||todayISO();
+   const year=Number(state.year||2026);
+   const key=normKey(u.user)+'|'+date;
+   state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+   const b=currentBook();
+   b.income=Array.isArray(b.income)?b.income:Array(12).fill(0);
+   b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+
+   // Una renovación real se registra UNA sola vez por cliente y fecha.
+   state.renewalHistory=state.renewalHistory.filter(x=>x && (normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10))!==key);
+   b.renewals=b.renewals.filter(x=>x && (normKey(x.user)+'|'+String(x.date||x.renewalDate||'').slice(0,10))!==key);
+
+   // La nueva caducidad siempre parte de la caducidad que tenía el cliente antes de esta renovación.
+   const baseEnd=String(u.end||'').slice(0,10);
+   if(!baseEnd){toast('Este cliente no tiene fecha de caducidad');return;}
+   const newEnd=addMonthsToDate(baseEnd,months);
+   if(!newEnd){toast('No se puede calcular la nueva caducidad');return;}
+
+   const rec={id:Date.now()+Math.random(),user:u.user,userId:u.id,date,renewalDate:date,months,price,baseEnd,newEnd,year,manualClassification:false};
+   state.renewalHistory.push(rec);
+   b.renewals.push(rec);
+
+   // Una renovación real sí genera ingreso y cuenta como RENOVADO.
+   const mi=monthIndex(date);
+   if(mi>=0&&mi<12) b.income[mi]=(Number(b.income[mi])||0)+price;
+
+   u.end=newEnd;
+   u.price=price;
+   u.yearStatus='renewed';
+   u.yearStatusDate=date;
+   addLifecycle(u,'renewal',date,{months,price,newEnd,baseEnd,manual:false});
+   logActivity(`🔄 Renovado ${u.user} · ${months} meses · ${euro(price)}`,'renewal');
+
+   // Cerrar el editor ANTES de guardar/sincronizar para que nunca quede bloqueado por Firebase.
+   closeModal();
    render('renewals');
- }else{
-   toast('Renovación guardada localmente · error al sincronizar Firebase');
+   toast(`✅ ${u.user} renovado hasta ${fmt(newEnd)}`);
+
+   const saved=await save();
+   if(saved){
+     // Refresca de nuevo después de Firebase para que el contador/historial quede actualizado.
+     render('renewals');
+     toast(`✅ Renovación guardada · ${u.user} · hasta ${fmt(newEnd)}`);
+   }else{
+     toast('⚠️ Renovación guardada localmente · error al sincronizar Firebase');
+   }
+ }catch(err){
+   console.error('Error guardando renovación:',err);
+   closeModal();
+   render('renewals');
+   toast('❌ Error al guardar la renovación. Revisa la consola.');
  }
 }
-
 async function saveEditedRenewal(idx){
  const list=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; const x=list[idx]; if(!x)return;
  const oldDate=String(x.date||x.renewalDate||'').slice(0,10), oldPrice=Number(x.price)||0;
@@ -479,7 +485,7 @@ function renewalDateParts(value){
 }
 function monthlyRenewalStats(monthIndex, year=state.year){const b=state.yearBooks?.[String(year)]||blankYearBook();const list=Array.isArray(b.renewals)?b.renewals:[];return {income:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).reduce((a,x)=>a+(Number(x.price)||0),0),count:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).length}}
 function monthIndexOfDate(v){const d=String(v||'').slice(0,10);const m=d.match(/^\d{4}-(\d{2})-/);return m?Number(m[1])-1:-1}
-function monthlyFinance(monthIndex){const b=currentBook();const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0;const renewals=(b.renewals||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const newClients=(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const cancellations=(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const baseClients=Number(b.lines?.[monthIndex])||0;const clients=Math.max(0,baseClients+newClients+renewals-cancellations);const benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals,newClients,cancellations}}
+function monthlyFinance(monthIndex){const b=currentBook();const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0;const renewalList=(b.renewals||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex);const renewals=renewalList.length;const newClients=(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const cancellations=(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const baseClients=Number(b.lines?.[monthIndex])||0;const paidRenewals=renewalList.filter(x=>!x.manualClassification).length;const clients=Math.max(0,baseClients+newClients+paidRenewals-cancellations);const benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals,newClients,cancellations}}
 
 function finance(){
  const b=currentBook(), totalIncome=b.income.reduce((a,v)=>a+(Number(v)||0),0), totalExpense=b.expense.reduce((a,v)=>a+(Number(v)||0),0), totalBenefit=totalIncome-totalExpense;
@@ -554,9 +560,10 @@ async function saveUser(index, freeIndex=null){
      addLifecycle(u,'new',d,{manual:true});
    }
    if(status==='renewed' && d){
-     // IMPORTANTE: una clasificación manual como RENOVADO NO es una renovación cobrada.
-     // No se añade a b.renewals, porque eso alteraría RENOVADOS, CLIENTES e ingresos.
-     // Solo se guarda el estado visual/histórico del cliente.
+     // RENOVADO manual = cuenta como RENOVADO en las estadísticas,
+     // pero NO es un cobro ni una nueva alta. Por eso precio=0 y manualClassification=true.
+     // Si ya estaba pagado, no genera ingresos ni aumenta el número de clientes base.
+     b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
      addLifecycle(u,'renewal',d,{manual:true});
    }
  }
