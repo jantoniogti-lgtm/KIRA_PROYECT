@@ -144,6 +144,7 @@ async function save(){
   state.meta.updatedAt=Date.now();
   state.meta.saveId=String(state.meta.updatedAt)+'-'+Math.random().toString(36).slice(2);
   state.yearBooks=state.yearBooks||{};
+  normalizeClassificationRecords();
   currentBook();
   state.credits=currentBook().credits;
   state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
@@ -206,7 +207,13 @@ async function initFirebase(){
         state.year=Number(state.year||2026); state.yearBooks=state.yearBooks||{}; state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[]; state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.activityLog=Array.isArray(state.activityLog)?state.activityLog:[]; state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; state.viewPrefs=state.viewPrefs||{}; state.meta=state.meta||{};
         if(!state.yearBooks['2026'])state.yearBooks['2026']=blankYearBook(); if(!state.yearBooks['2027'])state.yearBooks['2027']=blankYearBook();
         state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
-        localStorage.setItem('kira-control-v7',JSON.stringify(state)); setFirebaseStatus('☁️ Conectado · Firebase');
+        const cleanedOnLoad=normalizeClassificationRecords().changed;
+        localStorage.setItem('kira-control-v7',JSON.stringify(state));
+        if(cleanedOnLoad){
+          state.meta=state.meta||{}; state.meta.updatedAt=Date.now(); state.meta.saveId='cleanup-'+Date.now()+'-'+Math.random().toString(36).slice(2); syncPending=true;
+          await kiraRef.set(state); syncPending=false;
+          setFirebaseStatus('☁️ Firebase · duplicados corregidos');
+        }else setFirebaseStatus('☁️ Conectado · Firebase');
       }
    }
    firebaseReady=true; firebaseLoaded=true;
@@ -220,7 +227,11 @@ async function initFirebase(){
       incoming.users=Array.isArray(incoming.users)?incoming.users:[]; incoming.freeUsers=Array.isArray(incoming.freeUsers)?incoming.freeUsers:[]; incoming.year=Number(incoming.year||2026); incoming.yearBooks=incoming.yearBooks||{}; incoming.lifecycleEvents=Array.isArray(incoming.lifecycleEvents)?incoming.lifecycleEvents:[]; incoming.cancellations=Array.isArray(incoming.cancellations)?incoming.cancellations:[]; incoming.activityLog=Array.isArray(incoming.activityLog)?incoming.activityLog:[]; incoming.renewalHistory=Array.isArray(incoming.renewalHistory)?incoming.renewalHistory:[]; incoming.viewPrefs=incoming.viewPrefs||{}; incoming.meta=incoming.meta||{};
       if(!incoming.yearBooks['2026'])incoming.yearBooks['2026']=blankYearBook(); if(!incoming.yearBooks['2027'])incoming.yearBooks['2027']=blankYearBook();
       state=incoming; state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
-      localStorage.setItem('kira-control-v7',JSON.stringify(state)); setFirebaseStatus('☁️ Sincronizado'); render(uiState.page||'dashboard');
+      const cleanedIncoming=normalizeClassificationRecords().changed;
+      localStorage.setItem('kira-control-v7',JSON.stringify(state));
+      if(cleanedIncoming){ state.meta=state.meta||{}; state.meta.updatedAt=Date.now(); state.meta.saveId='cleanup-'+Date.now()+'-'+Math.random().toString(36).slice(2); syncPending=true; kiraRef.set(state).finally(()=>{syncPending=false;}); setFirebaseStatus('☁️ Sincronizado · duplicados corregidos'); }
+      else setFirebaseStatus('☁️ Sincronizado');
+      render(uiState.page||'dashboard');
    });
  }catch(e){console.error(e);setFirebaseStatus('⚠️ Firebase no disponible · modo local');firebaseReady=false;}
  render(uiState.page||'dashboard');
@@ -422,16 +433,20 @@ function applyManualClassificationToUser(u,status,d){
  if(status==='new'){
    const realNew=b.newClients.some(x=>x&&!x.manualClassification&&normKey(x.user)===keyUser&&Number(x.year)===year&&String(x.date||'').slice(0,10)===date);
    const manualPrice=realNew?0:price;
-   b.newClients.push({id:'manual-new-'+u.id+'-'+date,user:u.user,date,year,price:manualPrice,manualClassification:true});
-   const mi=monthIndexOfDate(date);if(!realNew&&mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
-   addLifecycle(u,'new',date,{manual:true,manualClassification:true,price:manualPrice});
+   if(!realNew){
+     b.newClients.push({id:'manual-new-'+u.id+'-'+date,user:u.user,date,year,price:manualPrice,manualClassification:true});
+     const mi=monthIndexOfDate(date);if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
+     addLifecycle(u,'new',date,{manual:true,manualClassification:true,price:manualPrice});
+   }
  }else if(status==='renewed'){
    b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser&&Number(x.year)===year));
    const realRenewal=b.renewals.some(x=>x&&!x.manualClassification&&normKey(x.user)===keyUser&&Number(x.year)===year&&String(x.date||x.renewalDate||'').slice(0,10)===date);
    const manualPrice=realRenewal?0:price;
-   b.renewals.push({id:'manual-renewal-'+u.id+'-'+date,user:u.user,userId:u.id,date,renewalDate:date,months:0,price:manualPrice,newEnd:u.end,year,manualClassification:true});
-   const mi=monthIndexOfDate(date);if(!realRenewal&&mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
-   addLifecycle(u,'renewal',date,{manual:true,manualClassification:true,price:manualPrice});
+   if(!realRenewal){
+     b.renewals.push({id:'manual-renewal-'+u.id+'-'+date,user:u.user,userId:u.id,date,renewalDate:date,months:0,price:manualPrice,newEnd:u.end,year,manualClassification:true});
+     const mi=monthIndexOfDate(date);if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
+     addLifecycle(u,'renewal',date,{manual:true,manualClassification:true,price:manualPrice});
+   }
  }
 }
 async function bulkClassifyUsers(status){
@@ -480,16 +495,20 @@ async function bulkClassifyUsers(status){
      b.newClients=b.newClients.filter(x=>!(x&&normKey(x.user)===key&&Number(x.year)===targetYear&&x.manualClassification));
      const realRenewal=b.renewals.some(x=>x&&!x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear&&String(x.date||x.renewalDate||'').slice(0,10)===d);
      const charge=realRenewal?0:price;
-     b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:charge,newEnd:u.end,year:targetYear,manualClassification:true});
-     if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
-     addLifecycle(u,'renewal',d,{manual:true,manualClassification:true,price:charge});
+     if(!realRenewal){
+       b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:charge,newEnd:u.end,year:targetYear,manualClassification:true});
+       if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
+       addLifecycle(u,'renewal',d,{manual:true,manualClassification:true,price:charge});
+     }
    }else{
      b.renewals=b.renewals.filter(x=>!(x&&normKey(x.user)===key&&Number(x.year)===targetYear&&x.manualClassification));
      const realNew=b.newClients.some(x=>x&&!x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d);
      const charge=realNew?0:price;
-     b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,year:targetYear,price:charge,manualClassification:true});
-     if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
-     addLifecycle(u,'new',d,{manual:true,manualClassification:true,price:charge});
+     if(!realNew){
+       b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,year:targetYear,price:charge,manualClassification:true});
+       if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
+       addLifecycle(u,'new',d,{manual:true,manualClassification:true,price:charge});
+     }
    }
    u.yearStatus=status;
    u.yearStatusDate=d;
@@ -577,6 +596,7 @@ function filterFree(){
 }
 
 function renewals(){
+ dedupeRenewals(currentBook());
  let arr=[...state.users,...state.freeUsers].filter(u=>!u.cancelled&&u.active!==false&&days(u)>=0&&days(u)<=30).sort((a,b)=>days(a)-days(b));
  $('#content').innerHTML=header('Renovaciones','Próximas caducidades de clientes de pago y gratis',customButton('renewals'))
  +`<div class="panel"><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Usuario</th><th data-view-key="type">Tipo</th><th data-view-key="end">Caduca</th><th data-view-key="days">Días</th><th data-view-key="actions">Acción</th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),isFree=i<0;return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="type">${isFree?'GRATIS':'PAGO'}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="days" class="${days(u)<=7?'yellow':''}">${days(u)}</td><td data-view-key="actions">${isFree?'<span class="small">Sin renovación de pago</span>':`<button class="btn primary" onclick="renew(${i})">🔄 Renovar</button>`}</td></tr>`}).join('')}</tbody></table></div></div>
@@ -745,10 +765,69 @@ function renewalDateParts(value){
 }
 function monthlyRenewalStats(monthIndex, year=state.year){const b=state.yearBooks?.[String(year)]||blankYearBook();const list=Array.isArray(b.renewals)?b.renewals:[];return {income:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).reduce((a,x)=>a+(Number(x.price)||0),0),count:list.filter(x=>monthIndexOfDate(x.date)===monthIndex).length}}
 function monthIndexOfDate(v){const d=String(v||'').slice(0,10);const m=d.match(/^\d{4}-(\d{2})-/);return m?Number(m[1])-1:-1}
-function monthlyFinance(monthIndex){const b=currentBook();const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0;const renewalList=(b.renewals||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex);const renewals=renewalList.length;const newClients=(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const cancellations=(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const baseClients=Number(b.lines?.[monthIndex])||0;const paidRenewals=renewalList.filter(x=>!x.manualClassification).length;const clients=Math.max(0,baseClients+newClients+paidRenewals-cancellations);const benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals,newClients,cancellations}}
+
+// Regla: un cliente + una fecha = un solo registro. Una renovación REAL tiene prioridad sobre una MANUAL.
+function dedupeRenewals(book=currentBook()){
+  if(!book)return;
+  book.renewals=Array.isArray(book.renewals)?book.renewals:[];
+  book.income=Array.isArray(book.income)?book.income:Array(12).fill(0);
+  const seen=new Map(),cleaned=[];
+  for(const r of book.renewals){
+    if(!r)continue;
+    const d=String(r.date||r.renewalDate||'').slice(0,10), key=normKey(r.user)+'|'+d;
+    if(!d||!key){cleaned.push(r);continue;}
+    const prev=seen.get(key);
+    if(!prev){seen.set(key,r);cleaned.push(r);continue;}
+    const prevManual=!!prev.manualClassification,curManual=!!r.manualClassification;
+    if(prevManual&&!curManual){
+      const idx=cleaned.indexOf(prev);if(idx>=0)cleaned[idx]=r;seen.set(key,r);
+      const mi=monthIndexOfDate(prev.date||prev.renewalDate);if(mi>=0&&mi<12)book.income[mi]=Math.max(0,(Number(book.income[mi])||0)-(Number(prev.price)||0));
+    }else{
+      const mi=monthIndexOfDate(r.date||r.renewalDate);if(mi>=0&&mi<12)book.income[mi]=Math.max(0,(Number(book.income[mi])||0)-(Number(r.price)||0));
+    }
+  }
+  book.renewals=cleaned;
+  return cleaned;
+}
+function dedupeNewClients(book=currentBook()){
+  if(!book)return;
+  book.newClients=Array.isArray(book.newClients)?book.newClients:[];
+  book.income=Array.isArray(book.income)?book.income:Array(12).fill(0);
+  const seen=new Map(),cleaned=[];
+  for(const r of book.newClients){
+    if(!r)continue;
+    const d=String(r.date||'').slice(0,10),key=normKey(r.user)+'|'+d;
+    if(!d||!key){cleaned.push(r);continue;}
+    const prev=seen.get(key);
+    if(!prev){seen.set(key,r);cleaned.push(r);continue;}
+    const prevManual=!!prev.manualClassification,curManual=!!r.manualClassification;
+    if(prevManual&&!curManual){
+      const idx=cleaned.indexOf(prev);if(idx>=0)cleaned[idx]=r;seen.set(key,r);
+      const mi=monthIndexOfDate(prev.date);if(mi>=0&&mi<12)book.income[mi]=Math.max(0,(Number(book.income[mi])||0)-(Number(prev.price)||0));
+    }else{
+      const mi=monthIndexOfDate(r.date);if(mi>=0&&mi<12)book.income[mi]=Math.max(0,(Number(book.income[mi])||0)-(Number(r.price)||0));
+    }
+  }
+  book.newClients=cleaned;
+  return cleaned;
+}
+function dedupeRenewalHistory(){
+  state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[];
+  const seen=new Set(),cleaned=[];
+  for(const r of state.renewalHistory){
+    if(!r){continue;}
+    const d=String(r.date||r.renewalDate||'').slice(0,10),key=normKey(r.user)+'|'+d;
+    if(!d||!key||!seen.has(key)){if(key)seen.add(key);cleaned.push(r);}
+  }
+  const changed=cleaned.length!==state.renewalHistory.length;
+  state.renewalHistory=cleaned;
+  return changed;
+}
+function normalizeClassificationRecords(){const b=currentBook();const beforeR=b.renewals.length,beforeN=b.newClients.length;dedupeRenewals(b);dedupeNewClients(b);const changed=beforeR!==b.renewals.length||beforeN!==b.newClients.length||dedupeRenewalHistory();return {book:b,changed};}
+function monthlyFinance(monthIndex){const b=normalizeClassificationRecords().book;const income=Number(b.income?.[monthIndex])||0,expense=Number(b.expense?.[monthIndex])||0;const renewalList=(b.renewals||[]).filter(x=>monthIndexOfDate(x.date||x.renewalDate)===monthIndex);const renewals=renewalList.length;const newClients=(b.newClients||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const cancellations=(b.cancellations||[]).filter(x=>monthIndexOfDate(x.date)===monthIndex).length;const baseClients=Number(b.lines?.[monthIndex])||0;const paidRenewals=renewalList.filter(x=>!x.manualClassification).length;const clients=Math.max(0,baseClients+newClients+paidRenewals-cancellations);const benefit=income-expense;return {income,expense,clients,benefit,avgClient:clients?benefit/clients:0,renewals,newClients,cancellations}}
 
 function openFinanceClassifications(status, monthIndex=null){
- const b=currentBook(), year=Number(state.year||2026), isNew=status==='new';
+ const b=normalizeClassificationRecords().book, year=Number(state.year||2026), isNew=status==='new';
  const source=isNew?(b.newClients||[]):(b.renewals||[]);
  const arr=source.filter(x=>x&&Number(x.year||year)===year&&(!Number.isInteger(monthIndex)||monthIndexOfDate(x.date||x.renewalDate)===monthIndex));
  const title=isNew?'🟢 NUEVOS':'🟡 RENOVADOS';
@@ -758,7 +837,7 @@ function openFinanceClassifications(status, monthIndex=null){
  $('#modalbg').style.display='flex';
 }
 function finance(){
- const b=currentBook(), totalIncome=b.income.reduce((a,v)=>a+(Number(v)||0),0), totalExpense=b.expense.reduce((a,v)=>a+(Number(v)||0),0), totalBenefit=totalIncome-totalExpense;
+ const b=normalizeClassificationRecords().book, totalIncome=b.income.reduce((a,v)=>a+(Number(v)||0),0), totalExpense=b.expense.reduce((a,v)=>a+(Number(v)||0),0), totalBenefit=totalIncome-totalExpense;
  $('#content').innerHTML=header('Finanzas',`Año ${state.year} · control separado de nuevos, renovados y bajas`,customButton('finance'))+
  `<div class="cards" data-view-key="summary"><div class="card"><div class="label">INGRESOS ${state.year}</div><div class="big orange">${euro(totalIncome)}</div></div><div class="card"><div class="label">GASTOS ${state.year}</div><div class="big red">${euro(totalExpense)}</div></div><div class="card"><div class="label">BENEFICIO ${state.year}</div><div class="big green">${euro(totalBenefit)}</div></div><div class="card clickable" onclick="openFinanceClassifications('new')"><div class="label">🟢 NUEVOS</div><div class="big">${(b.newClients||[]).length}</div><div class="muted-note">Ver clientes nuevos</div></div><div class="card clickable" onclick="openFinanceClassifications('renewed')"><div class="label">🟡 RENOVADOS</div><div class="big yellow">${(b.renewals||[]).length}</div><div class="muted-note">Ver renovados</div></div></div>`+
  `<div class="panel" style="margin-top:13px" data-view-key="monthly"><h2>📅 Resumen mensual · ${state.year}</h2><div class="tablewrap"><table class="table"><thead><tr><th>Mes</th><th>Cobrado</th><th>Gasto</th><th>Clientes</th><th>Nuevos</th><th>Renovados</th><th>Bajas</th><th>Beneficio</th><th>Beneficio medio / cliente</th></tr></thead><tbody>${state.months.map((m,i)=>{const f=monthlyFinance(i);return `<tr><td><b>${m}</b></td><td>${euro(f.income)}</td><td>${euro(f.expense)}</td><td>${num(f.clients)}</td><td><button class="btn small" onclick="openFinanceClassifications('new',${i})">🟢 ${num(f.newClients)}</button></td><td><button class="btn small" onclick="openFinanceClassifications('renewed',${i})">🟡 ${num(f.renewals)}</button></td><td>${num(f.cancellations)}</td><td>${euro(f.benefit)}</td><td><b>${euro(f.avgClient)}</b></td></tr>`}).join('')}</tbody></table></div></div>`+
