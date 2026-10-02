@@ -328,6 +328,58 @@ function runGlobalSearch(){
 }
 
 function lifecycleBadge(u){const t=lifecycleFor(u);if(t==='new')return '<span class="status s-active">NUEVO</span>';if(t==='renewal')return '<span class="status s-soon">RENOVADO</span>';if(t==='cancel')return '<span class="status s-exp">BAJA</span>';return ''}
+let selectedUserIds=new Set();
+function visibleUserIds(){return [...document.querySelectorAll('#utable input.user-select')].map(x=>String(x.value));}
+function toggleUserSelection(id,checked){id=String(id);if(checked)selectedUserIds.add(id);else selectedUserIds.delete(id);updateBulkSelectionUI();}
+function toggleAllVisibleUsers(checked){visibleUserIds().forEach(id=>checked?selectedUserIds.add(id):selectedUserIds.delete(id));updateBulkSelectionUI();filterUsers(false);}
+function updateBulkSelectionUI(){
+ const all=visibleUserIds();
+ const checked=all.length>0&&all.every(id=>selectedUserIds.has(id));
+ const master=$('#selectAllUsers');if(master){master.checked=checked;master.indeterminate=!checked&&all.some(id=>selectedUserIds.has(id));}
+ const count=$('#selectedUsersCount');if(count)count.textContent=String(selectedUserIds.size);
+ document.querySelectorAll('#utable input.user-select').forEach(x=>x.checked=selectedUserIds.has(String(x.value)));
+}
+function clearUserSelection(){selectedUserIds.clear();updateBulkSelectionUI();filterUsers(false);}
+function applyManualClassificationToUser(u,status,d){
+ const b=currentBook();b.newClients=Array.isArray(b.newClients)?b.newClients:[];b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+ const keyUser=normKey(u.user),year=Number(state.year||2026),date=String(d||todayISO()).slice(0,10),price=Number(u.price)||0;
+ const oldManualNew=b.newClients.find(x=>x&&normKey(x.user)===keyUser&&Number(x.year)===year&&x.manualClassification);
+ const oldManualRenewal=b.renewals.find(x=>x&&normKey(x.user)===keyUser&&Number(x.year)===year&&x.manualClassification);
+ if(oldManualNew){const mi=monthIndexOfDate(oldManualNew.date);if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)-(Number(oldManualNew.price)||0);}
+ if(oldManualRenewal){const mi=monthIndexOfDate(oldManualRenewal.date||oldManualRenewal.renewalDate);if(mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)-(Number(oldManualRenewal.price)||0);}
+ b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser&&Number(x.year)===year&&x.manualClassification));
+ b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser&&Number(x.year)===year&&x.manualClassification));
+ state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
+ state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===keyUser&&Number(e.year)===year&&e.manual===true));
+ u.yearStatus=status;u.yearStatusDate=date;
+ if(status==='new'){
+   const realNew=b.newClients.some(x=>x&&!x.manualClassification&&normKey(x.user)===keyUser&&Number(x.year)===year&&String(x.date||'').slice(0,10)===date);
+   const manualPrice=realNew?0:price;
+   b.newClients.push({id:'manual-new-'+u.id+'-'+date,user:u.user,date,year,price:manualPrice,manualClassification:true});
+   const mi=monthIndexOfDate(date);if(!realNew&&mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
+   addLifecycle(u,'new',date,{manual:true,manualClassification:true,price:manualPrice});
+ }else if(status==='renewed'){
+   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser&&Number(x.year)===year));
+   const realRenewal=b.renewals.some(x=>x&&!x.manualClassification&&normKey(x.user)===keyUser&&Number(x.year)===year&&String(x.date||x.renewalDate||'').slice(0,10)===date);
+   const manualPrice=realRenewal?0:price;
+   b.renewals.push({id:'manual-renewal-'+u.id+'-'+date,user:u.user,userId:u.id,date,renewalDate:date,months:0,price:manualPrice,newEnd:u.end,year,manualClassification:true});
+   const mi=monthIndexOfDate(date);if(!realRenewal&&mi>=0&&mi<12)b.income[mi]=(Number(b.income[mi])||0)+price;
+   addLifecycle(u,'renewal',date,{manual:true,manualClassification:true,price:manualPrice});
+ }
+}
+async function bulkClassifyUsers(status){
+ const ids=[...selectedUserIds];if(!ids.length){toast('Selecciona al menos un cliente');return;}
+ const d=$('#bulkClassDate')?.value||todayISO();
+ if(!['new','renewed'].includes(status)){toast('Selecciona NUEVO o RENOVADO');return;}
+ let count=0;
+ ids.forEach(id=>{const u=state.users.find(x=>String(x.id)===String(id));if(!u||u.cancelled||u.active===false)return;applyManualClassificationToUser(u,status,d);count++;});
+ if(!count){toast('No hay clientes válidos seleccionados');return;}
+ logActivity(`✏️ Clasificación masiva · ${status==='new'?'NUEVOS':'RENOVADOS'} · ${count} clientes`,'client');
+ selectedUserIds.clear();
+ render('users');
+ try{const saved=await save();if(saved===false)toast(`⚠️ ${count} clientes clasificados · guardado local`);else toast(`✅ ${count} clientes marcados como ${status==='new'?'NUEVOS':'RENOVADOS'}`);}catch(e){console.error(e);toast(`⚠️ ${count} clientes clasificados · error Firebase`);}
+ render('users');
+}
 function users(){
  $('#content').innerHTML=header('Clientes de pago','Búsqueda, filtros y ordenación',
  `${customButton('users')}<button class="btn" onclick="exportJSON()">⬇ Copia</button><button class="btn primary" onclick="openUser()">＋ Nuevo</button>`)
@@ -356,7 +408,7 @@ function filterUsers(){
    return !u.cancelled&&u.active!==false&&ok&&monthOk&&creditOk&&priceOk&&lineOk&&txt.includes(qv)
  });
  arr.sort((a,b)=>{let av=srt==='user'?String(a.user||'').toLowerCase():srt==='start'?(a.start||''):srt==='end'?(a.end||''):srt==='price'?Number(a.price)||0:srt==='credits'?Number(a.creditsNeeded)||0:days(a),bv=srt==='user'?String(b.user||'').toLowerCase():srt==='start'?(b.start||''):srt==='end'?(b.end||''):srt==='price'?Number(b.price)||0:srt==='credits'?Number(b.creditsNeeded)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
- $('#utable').innerHTML=`<div class="tablewrap"><table class="table"><thead><tr><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
+ $('#utable').innerHTML=`<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1115;border:1px solid var(--line);border-radius:10px"><label style="display:flex;align-items:center;gap:7px;font-weight:700"><input id="selectAllUsers" type="checkbox" onchange="toggleAllVisibleUsers(this.checked)"> Seleccionar todos los visibles</label><span class="small">Seleccionados: <b id="selectedUsersCount">${[...selectedUserIds].length}</b></span><input id="bulkClassDate" type="date" value="${todayISO()}" title="Fecha de clasificación"><button class="btn small" onclick="bulkClassifyUsers('new')">🟢 Marcar NUEVOS</button><button class="btn small" onclick="bulkClassifyUsers('renewed')">🟡 Marcar RENOVADOS</button><button class="btn small" onclick="clearUserSelection()">✖ Limpiar</button></div><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="select">✓</th><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="select"><input class="user-select" type="checkbox" value="${esc(String(u.id))}" ${selectedUserIds.has(String(u.id))?'checked':''} onchange="toggleUserSelection(this.value,this.checked)"></td><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
  applyViewPrefs('users')
 }
 function free(){
