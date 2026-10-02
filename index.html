@@ -104,6 +104,7 @@ state.credits=currentBook().credits;
 state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
 let firebaseReady=false;
 let firebaseLoaded=false;
+let syncPending=localStorage.getItem('kira-control-sync-pending')==='1';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 const euro=n=>Number(n||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
@@ -128,41 +129,34 @@ function createAutoBackup(){
 async function save(){
   state.meta=state.meta||{};
   state.meta.dataVersion=DATA_VERSION;
-  const savedAt=Date.now();
-  state.meta.updatedAt=savedAt;
+  state.meta.updatedAt=Date.now();
+  state.meta.saveId=String(state.meta.updatedAt)+'-'+Math.random().toString(36).slice(2);
   state.yearBooks=state.yearBooks||{};
   currentBook();
   state.credits=currentBook().credits;
-  state.sales={
-    income:currentBook().income,
-    expense:currentBook().expense,
-    lines:currentBook().lines,
-    benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))
-  };
+  state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
 
-  // 1) Guardado local inmediato: nunca perder un cambio aunque Firebase tarde o falle.
+  // Siempre dejamos una copia local válida ANTES de tocar Firebase.
   try{
     localStorage.setItem('kira-control-v7',JSON.stringify(state));
+    localStorage.setItem('kira-control-sync-pending','1');
+    syncPending=true;
     createAutoBackup();
+  }catch(e){ console.error('Error guardando copia local:',e); }
+
+  if(!firebaseReady) return true;
+  try{
+    await kiraRef.set(state);
+    localStorage.setItem('kira-control-sync-pending','0');
+    syncPending=false;
+    setFirebaseStatus('☁️ Guardado en Firebase');
+    return true;
   }catch(e){
-    console.error('Error guardando localmente:',e);
+    console.error('Error Firebase:',e);
+    setFirebaseStatus('⚠️ Guardado local · Firebase no respondió');
+    return false;
   }
-
-  // 2) Firebase: el mismo estado completo se guarda en kiraControl.
-  if(firebaseReady){
-    try{
-      await kiraRef.set(state);
-      setFirebaseStatus('☁️ Guardado en Firebase');
-      return true;
-    }catch(e){
-      console.error('Error Firebase:',e);
-      setFirebaseStatus('⚠️ Firebase no guardó · datos conservados localmente');
-      return false;
-    }
-  }
-  return true;
 }
-
 function setFirebaseStatus(t){let x=document.getElementById('firebaseStatus');if(x)x.textContent=t}
 async function initFirebase(){
  try{
@@ -185,7 +179,7 @@ async function initFirebase(){
       // Los subimos a Firebase y los conservamos también en localStorage.
       const localUpdated=Number(local?.meta?.updatedAt||0);
       const remoteUpdated=Number(remote?.meta?.updatedAt||0);
-      if(localUpdated>remoteUpdated){
+      if(syncPending || localUpdated>remoteUpdated){
         state=local;
         state.users=Array.isArray(state.users)?state.users:[]; state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
         state.year=Number(state.year||2026); state.yearBooks=state.yearBooks||{}; state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[]; state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; state.viewPrefs=state.viewPrefs||{}; state.meta=state.meta||{};
@@ -207,8 +201,9 @@ async function initFirebase(){
    kiraRef.off('value');
    kiraRef.on('value',snap=>{
       if(!snap.exists())return; const incoming=snap.val()||{}; if(incoming.meta?.dataVersion!==DATA_VERSION)return;
-      const cu=Number(state.meta?.updatedAt||0), iu=Number(incoming.meta?.updatedAt||0); if(cu>iu)return;
-      // Si hay un cambio local pendiente más reciente, no lo sobrescribas con Firebase.
+      const cu=Number(state.meta?.updatedAt||0), iu=Number(incoming.meta?.updatedAt||0);
+      // Nunca pisar cambios locales pendientes.
+      if(syncPending || cu>iu || (state.meta?.saveId && incoming.meta?.saveId===state.meta.saveId))return;
       if(iu<cu)return;
       incoming.users=Array.isArray(incoming.users)?incoming.users:[]; incoming.freeUsers=Array.isArray(incoming.freeUsers)?incoming.freeUsers:[]; incoming.year=Number(incoming.year||2026); incoming.yearBooks=incoming.yearBooks||{}; incoming.lifecycleEvents=Array.isArray(incoming.lifecycleEvents)?incoming.lifecycleEvents:[]; incoming.cancellations=Array.isArray(incoming.cancellations)?incoming.cancellations:[]; incoming.renewalHistory=Array.isArray(incoming.renewalHistory)?incoming.renewalHistory:[]; incoming.viewPrefs=incoming.viewPrefs||{}; incoming.meta=incoming.meta||{};
       if(!incoming.yearBooks['2026'])incoming.yearBooks['2026']=blankYearBook(); if(!incoming.yearBooks['2027'])incoming.yearBooks['2027']=blankYearBook();
@@ -601,25 +596,25 @@ async function saveUser(index, freeIndex=null){
    b.newClients=Array.isArray(b.newClients)?b.newClients:[];
    b.renewals=Array.isArray(b.renewals)?b.renewals:[];
    const keyUser=normKey(u.user), year=Number(state.year||2026), d=String(u.yearStatusDate||'').slice(0,10);
-   // La clasificación manual sustituye la clasificación anterior del mismo cliente/año.
-   // IMPORTANTE: si pasa de NUEVO a RENOVADO, no debe seguir contando como nuevo.
-   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
-   // Si antes se había marcado manualmente como RENOVADO, elimina esa falsa renovación.
-   // Las renovaciones reales (cobradas desde el botón Renovar) se conservan.
+
+   // La clasificación manual es SOLO una clasificación. No cobra y no modifica la caducidad.
+   // Primero quitamos las clasificaciones manuales anteriores del mismo cliente/año.
+   b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
    b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
    state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
-   state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===keyUser && Number(e.year)===year && e.manual));
+   state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===keyUser && Number(e.year)===year && e.manual===true));
+
    if(status==='new' && d){
-     b.newClients.push({id:u.id,user:u.user,date:d,year,price:0,manualClassification:true});
+     // Si se marca NUEVO manualmente, sustituye el alta estadística del mismo cliente/año.
+     b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
+     b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,date:d,year,price:0,manualClassification:true});
      addLifecycle(u,'new',d,{manual:true});
-   }
-   if(status==='renewed' && d){
-     // RENOVADO manual = cuenta como RENOVADO en las estadísticas,
-     // pero NO es un cobro ni una nueva alta. Por eso precio=0 y manualClassification=true.
-     // Si ya estaba pagado, no genera ingresos ni aumenta el número de clientes base.
-     b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && String(x.date||'').slice(0,10)===d && x.manualClassification));
-     b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
-     addLifecycle(u,'renewal',d,{manual:true});
+   }else if(status==='renewed' && d){
+     // RENOVADO manual: aparece en el contador de renovados, pero NO suma ingresos
+     // y NO cambia la fecha de caducidad. Tampoco cuenta como NUEVO.
+     b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
+     b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
+     addLifecycle(u,'renewal',d,{manual:true,manualClassification:true});
    }
  }
  logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');
