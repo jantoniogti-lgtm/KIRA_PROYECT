@@ -128,7 +128,8 @@ function createAutoBackup(){
 async function save(){
   state.meta=state.meta||{};
   state.meta.dataVersion=DATA_VERSION;
-  state.meta.updatedAt=Date.now();
+  const savedAt=Date.now();
+  state.meta.updatedAt=savedAt;
   state.yearBooks=state.yearBooks||{};
   currentBook();
   state.credits=currentBook().credits;
@@ -139,7 +140,7 @@ async function save(){
     benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))
   };
 
-  // Guardado local SIEMPRE antes de intentar Firebase.
+  // 1) Guardado local inmediato: nunca perder un cambio aunque Firebase tarde o falle.
   try{
     localStorage.setItem('kira-control-v7',JSON.stringify(state));
     createAutoBackup();
@@ -147,7 +148,7 @@ async function save(){
     console.error('Error guardando localmente:',e);
   }
 
-  // Firebase no debe impedir que el cambio quede guardado.
+  // 2) Firebase: el mismo estado completo se guarda en kiraControl.
   if(firebaseReady){
     try{
       await kiraRef.set(state);
@@ -155,7 +156,7 @@ async function save(){
       return true;
     }catch(e){
       console.error('Error Firebase:',e);
-      setFirebaseStatus('⚠️ Error Firebase · guardado local');
+      setFirebaseStatus('⚠️ Firebase no guardó · datos conservados localmente');
       return false;
     }
   }
@@ -180,19 +181,36 @@ async function initFirebase(){
       await kiraRef.set(state);
       setFirebaseStatus('☁️ Firebase preparado con Excel V4');
    }else{
-      state=remote;
-      state.users=Array.isArray(state.users)?state.users:[]; state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
-      state.year=Number(state.year||2026); state.yearBooks=state.yearBooks||{}; state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[]; state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.viewPrefs=state.viewPrefs||{}; state.meta=state.meta||{};
-      if(!state.yearBooks['2026'])state.yearBooks['2026']=blankYearBook(); if(!state.yearBooks['2027'])state.yearBooks['2027']=blankYearBook();
-      state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
-      localStorage.setItem('kira-control-v7',JSON.stringify(state)); setFirebaseStatus('☁️ Conectado · Firebase');
+      // Si el navegador tiene cambios más recientes que Firebase, NO los pisamos.
+      // Los subimos a Firebase y los conservamos también en localStorage.
+      const localUpdated=Number(local?.meta?.updatedAt||0);
+      const remoteUpdated=Number(remote?.meta?.updatedAt||0);
+      if(localUpdated>remoteUpdated){
+        state=local;
+        state.users=Array.isArray(state.users)?state.users:[]; state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
+        state.year=Number(state.year||2026); state.yearBooks=state.yearBooks||{}; state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[]; state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; state.viewPrefs=state.viewPrefs||{}; state.meta=state.meta||{};
+        if(!state.yearBooks['2026'])state.yearBooks['2026']=blankYearBook(); if(!state.yearBooks['2027'])state.yearBooks['2027']=blankYearBook();
+        state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
+        localStorage.setItem('kira-control-v7',JSON.stringify(state));
+        await kiraRef.set(state);
+        setFirebaseStatus('☁️ Firebase actualizado con los cambios locales');
+      }else{
+        state=remote;
+        state.users=Array.isArray(state.users)?state.users:[]; state.freeUsers=Array.isArray(state.freeUsers)?state.freeUsers:[];
+        state.year=Number(state.year||2026); state.yearBooks=state.yearBooks||{}; state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[]; state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.renewalHistory=Array.isArray(state.renewalHistory)?state.renewalHistory:[]; state.viewPrefs=state.viewPrefs||{}; state.meta=state.meta||{};
+        if(!state.yearBooks['2026'])state.yearBooks['2026']=blankYearBook(); if(!state.yearBooks['2027'])state.yearBooks['2027']=blankYearBook();
+        state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
+        localStorage.setItem('kira-control-v7',JSON.stringify(state)); setFirebaseStatus('☁️ Conectado · Firebase');
+      }
    }
    firebaseReady=true; firebaseLoaded=true;
    kiraRef.off('value');
    kiraRef.on('value',snap=>{
       if(!snap.exists())return; const incoming=snap.val()||{}; if(incoming.meta?.dataVersion!==DATA_VERSION)return;
       const cu=Number(state.meta?.updatedAt||0), iu=Number(incoming.meta?.updatedAt||0); if(cu>iu)return;
-      incoming.users=Array.isArray(incoming.users)?incoming.users:[]; incoming.freeUsers=Array.isArray(incoming.freeUsers)?incoming.freeUsers:[]; incoming.year=Number(incoming.year||2026); incoming.yearBooks=incoming.yearBooks||{}; incoming.lifecycleEvents=Array.isArray(incoming.lifecycleEvents)?incoming.lifecycleEvents:[]; incoming.cancellations=Array.isArray(incoming.cancellations)?incoming.cancellations:[]; incoming.viewPrefs=incoming.viewPrefs||{}; incoming.meta=incoming.meta||{};
+      // Si hay un cambio local pendiente más reciente, no lo sobrescribas con Firebase.
+      if(iu<cu)return;
+      incoming.users=Array.isArray(incoming.users)?incoming.users:[]; incoming.freeUsers=Array.isArray(incoming.freeUsers)?incoming.freeUsers:[]; incoming.year=Number(incoming.year||2026); incoming.yearBooks=incoming.yearBooks||{}; incoming.lifecycleEvents=Array.isArray(incoming.lifecycleEvents)?incoming.lifecycleEvents:[]; incoming.cancellations=Array.isArray(incoming.cancellations)?incoming.cancellations:[]; incoming.renewalHistory=Array.isArray(incoming.renewalHistory)?incoming.renewalHistory:[]; incoming.viewPrefs=incoming.viewPrefs||{}; incoming.meta=incoming.meta||{};
       if(!incoming.yearBooks['2026'])incoming.yearBooks['2026']=blankYearBook(); if(!incoming.yearBooks['2027'])incoming.yearBooks['2027']=blankYearBook();
       state=incoming; state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
       localStorage.setItem('kira-control-v7',JSON.stringify(state)); setFirebaseStatus('☁️ Sincronizado'); render(uiState.page||'dashboard');
