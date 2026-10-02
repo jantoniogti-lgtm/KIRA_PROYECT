@@ -606,25 +606,47 @@ async function saveUser(index, freeIndex=null){
    b.newClients=Array.isArray(b.newClients)?b.newClients:[];
    b.renewals=Array.isArray(b.renewals)?b.renewals:[];
    const keyUser=normKey(u.user), year=Number(state.year||2026), d=String(u.yearStatusDate||'').slice(0,10);
+   const price=Number(u.price)||0;
 
-   // La clasificación manual es SOLO una clasificación. No cobra y no modifica la caducidad.
-   // Primero quitamos las clasificaciones manuales anteriores del mismo cliente/año.
+   // La clasificación manual también representa el cobro del cliente.
+   // Al volver a editarlo NO duplicamos el cobro: retiramos primero la
+   // clasificación manual anterior y su importe, y después registramos la nueva.
+   const oldManualNew=b.newClients.find(x=>x && normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification);
+   const oldManualRenewal=b.renewals.find(x=>x && normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification);
+   if(oldManualNew){
+     const omi=monthIndexOfDate(oldManualNew.date);
+     if(omi>=0&&omi<12) b.income[omi]=(Number(b.income[omi])||0)-(Number(oldManualNew.price)||0);
+   }
+   if(oldManualRenewal){
+     const omi=monthIndexOfDate(oldManualRenewal.date||oldManualRenewal.renewalDate);
+     if(omi>=0&&omi<12) b.income[omi]=(Number(b.income[omi])||0)-(Number(oldManualRenewal.price)||0);
+   }
    b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
    b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
    state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
    state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===keyUser && Number(e.year)===year && e.manual===true));
 
    if(status==='new' && d){
-     // Si se marca NUEVO manualmente, sustituye el alta estadística del mismo cliente/año.
-     b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
-     b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,date:d,year,price:0,manualClassification:true});
-     addLifecycle(u,'new',d,{manual:true});
+     // Si se marca NUEVO manualmente, sustituye la clasificación del mismo cliente/año.
+     // Si ya existía un alta automática para esa misma fecha, el cobro ya está contabilizado.
+     b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year && x.manualClassification));
+     const realNew=b.newClients.some(x=>x && !x.manualClassification && normKey(x.user)===keyUser && Number(x.year)===year && String(x.date||'').slice(0,10)===d);
+     const manualPrice=realNew?0:price;
+     b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,date:d,year,price:manualPrice,manualClassification:true});
+     const mi=monthIndexOfDate(d);
+     if(!realNew && mi>=0&&mi<12) b.income[mi]=(Number(b.income[mi])||0)+price;
+     addLifecycle(u,'new',d,{manual:true,manualClassification:true,price:manualPrice});
    }else if(status==='renewed' && d){
-     // RENOVADO manual: aparece en el contador de renovados, pero NO suma ingresos
-     // y NO cambia la fecha de caducidad. Tampoco cuenta como NUEVO.
+     // RENOVADO manual: cuenta como renovado y suma el precio del cliente al mes,
+     // pero NO modifica su caducidad. Si ya existe una renovación real para la misma
+     // fecha, el ingreso ya está contabilizado y no se vuelve a sumar.
      b.newClients=b.newClients.filter(x=>!(normKey(x.user)===keyUser && Number(x.year)===year));
-     b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
-     addLifecycle(u,'renewal',d,{manual:true,manualClassification:true});
+     const realRenewal=b.renewals.some(x=>x && !x.manualClassification && normKey(x.user)===keyUser && Number(x.year)===year && String(x.date||x.renewalDate||'').slice(0,10)===d);
+     const manualPrice=realRenewal?0:price;
+     b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:manualPrice,newEnd:u.end,year,manualClassification:true});
+     const mi=monthIndexOfDate(d);
+     if(!realRenewal && mi>=0&&mi<12) b.income[mi]=(Number(b.income[mi])||0)+price;
+     addLifecycle(u,'renewal',d,{manual:true,manualClassification:true,price:manualPrice});
    }
  }
  // Cerrar SIEMPRE el editor antes de cualquier función secundaria o sincronización.
