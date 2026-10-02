@@ -368,17 +368,52 @@ function applyManualClassificationToUser(u,status,d){
  }
 }
 async function bulkClassifyUsers(status){
- const ids=[...selectedUserIds];if(!ids.length){toast('Selecciona al menos un cliente');return;}
- const d=$('#bulkClassDate')?.value||todayISO();
+ const ids=[...selectedUserIds].map(String);
+ if(!ids.length){toast('Selecciona al menos un cliente');return;}
+ const d=String($('#bulkClassDate')?.value||todayISO()).slice(0,10);
+ const targetYear=yearOf(d);
  if(!['new','renewed'].includes(status)){toast('Selecciona NUEVO o RENOVADO');return;}
- let count=0;
- ids.forEach(id=>{const u=state.users.find(x=>String(x.id)===String(id));if(!u||u.cancelled||u.active===false)return;applyManualClassificationToUser(u,status,d);count++;});
+ if(targetYear!==Number(state.year||2026)){
+   toast(`La fecha es de ${targetYear}. Cambia el año activo a ${targetYear} antes de clasificar.`);
+   return;
+ }
+ const b=currentBook();
+ b.income=Array.isArray(b.income)?b.income:Array(12).fill(0);
+ b.newClients=Array.isArray(b.newClients)?b.newClients:[];
+ b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+ let count=0, addedIncome=0, skipped=0;
+ for(const id of ids){
+   const u=state.users.find(x=>String(x.id)===id);
+   if(!u||u.cancelled||u.active===false){skipped++;continue;}
+   const beforeIncome=Number(b.income[monthIndexOfDate(d)]||0);
+   applyManualClassificationToUser(u,status,d);
+   const afterIncome=Number(b.income[monthIndexOfDate(d)]||0);
+   addedIncome += afterIncome-beforeIncome;
+   count++;
+ }
  if(!count){toast('No hay clientes válidos seleccionados');return;}
+ // Verificación: los clientes procesados deben existir en el libro del año actual.
+ const keys=new Set(ids);
+ const classified=(status==='renewed'?b.renewals:b.newClients).filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d&&keys.has(String(x.userId||x.id).replace(/^manual-(?:new|renewal)-/,'').split('-')[0]) );
  logActivity(`✏️ Clasificación masiva · ${status==='new'?'NUEVOS':'RENOVADOS'} · ${count} clientes`,'client');
  selectedUserIds.clear();
- render('users');
- try{const saved=await save();if(saved===false)toast(`⚠️ ${count} clientes clasificados · guardado local`);else toast(`✅ ${count} clientes marcados como ${status==='new'?'NUEVOS':'RENOVADOS'}`);}catch(e){console.error(e);toast(`⚠️ ${count} clientes clasificados · error Firebase`);}
- render('users');
+ // Guardamos ANTES de renderizar para que ninguna reconstrucción de la tabla pueda interferir.
+ try{
+   const saved=await save();
+   render('users');
+   const totalClassified=(status==='renewed'
+     ? b.renewals.filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d).length
+     : b.newClients.filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d).length);
+   if(saved===false){
+     toast(`⚠️ ${count} ${status==='new'?'nuevos':'renovados'} guardados localmente · ${totalClassified} contabilizados · ${euro(addedIncome)}`);
+   }else{
+     toast(`✅ ${count} clientes ${status==='new'?'NUEVOS':'RENOVADOS'} · ${totalClassified} contabilizados · +${euro(addedIncome)}`);
+   }
+ }catch(e){
+   console.error('Error clasificación masiva:',e);
+   render('users');
+   toast(`⚠️ ${count} clasificados localmente · revisa Firebase`);
+ }
 }
 function users(){
  $('#content').innerHTML=header('Clientes de pago','Búsqueda, filtros y ordenación',
