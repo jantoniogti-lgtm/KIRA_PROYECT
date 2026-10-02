@@ -118,12 +118,48 @@ function setUIPage(p){uiState.page=p;saveUI();}
 function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#ul'))$('#ul').value=p.line||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
 function restoreFreeUI(){const p=uiState.free||{};if($('#fq'))$('#fq').value=p.q||'';if($('#fs'))$('#fs').value=p.s||'user';if($('#fd'))$('#fd').value=p.dir||'asc';}
 
+function createAutoBackup(){
+  try{
+    const backup={...state,meta:{...(state.meta||{}),backupAt:Date.now()}};
+    localStorage.setItem('kira-control-auto-backup',JSON.stringify(backup));
+  }catch(e){console.warn('No se pudo crear la copia local:',e);}
+}
+
 async function save(){
- createAutoBackup(); state.meta=state.meta||{}; state.meta.dataVersion=DATA_VERSION; state.meta.updatedAt=Date.now();
- state.credits=currentBook().credits; state.sales={income:currentBook().income,expense:currentBook().expense,lines:currentBook().lines,benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))};
- localStorage.setItem('kira-control-v7',JSON.stringify(state));
- if(firebaseReady){try{await kiraRef.set(state);setFirebaseStatus('☁️ Guardado en Firebase');return true}catch(e){console.error(e);setFirebaseStatus('⚠️ Error Firebase');return false}}
- return true;
+  state.meta=state.meta||{};
+  state.meta.dataVersion=DATA_VERSION;
+  state.meta.updatedAt=Date.now();
+  state.yearBooks=state.yearBooks||{};
+  currentBook();
+  state.credits=currentBook().credits;
+  state.sales={
+    income:currentBook().income,
+    expense:currentBook().expense,
+    lines:currentBook().lines,
+    benefit:currentBook().income.map((v,i)=>v-(currentBook().expense[i]||0))
+  };
+
+  // Guardado local SIEMPRE antes de intentar Firebase.
+  try{
+    localStorage.setItem('kira-control-v7',JSON.stringify(state));
+    createAutoBackup();
+  }catch(e){
+    console.error('Error guardando localmente:',e);
+  }
+
+  // Firebase no debe impedir que el cambio quede guardado.
+  if(firebaseReady){
+    try{
+      await kiraRef.set(state);
+      setFirebaseStatus('☁️ Guardado en Firebase');
+      return true;
+    }catch(e){
+      console.error('Error Firebase:',e);
+      setFirebaseStatus('⚠️ Error Firebase · guardado local');
+      return false;
+    }
+  }
+  return true;
 }
 
 function setFirebaseStatus(t){let x=document.getElementById('firebaseStatus');if(x)x.textContent=t}
@@ -563,26 +599,27 @@ async function saveUser(index, freeIndex=null){
      // RENOVADO manual = cuenta como RENOVADO en las estadísticas,
      // pero NO es un cobro ni una nueva alta. Por eso precio=0 y manualClassification=true.
      // Si ya estaba pagado, no genera ingresos ni aumenta el número de clientes base.
+     b.renewals=b.renewals.filter(x=>!(normKey(x.user)===keyUser && String(x.date||'').slice(0,10)===d && x.manualClassification));
      b.renewals.push({id:'manual-'+u.id+'-'+d,user:u.user,date:d,months:0,price:0,newEnd:u.end,year,manualClassification:true});
      addLifecycle(u,'renewal',d,{manual:true});
    }
  }
  logActivity(`${isNew?'➕ Nuevo cliente':'✏️ Cliente modificado'} · ${u.user}`,'client');
- // Cerrar el editor inmediatamente al pulsar GUARDAR.
+ // Cerrar siempre el editor al pulsar Guardar, incluso si Firebase tarda o falla.
  closeModal();
- await save();
- toast(isNew?'Nuevo cliente guardado':'Usuario guardado');
  render(isFree?'free':'users');
+ toast(isNew?'Nuevo cliente guardado':'Usuario guardado');
+ try{
+   const saved=await save();
+   if(saved===false) toast('⚠️ Guardado local · Firebase no respondió');
+   render(isFree?'free':'users');
+ }catch(err){
+   console.error('Error al guardar usuario:',err);
+   toast('⚠️ Guardado local · error al sincronizar');
+   render(isFree?'free':'users');
+ }
 }
 
-async function cancelUser(index){
- const u=state.users[index]; if(!u)return; const date=prompt('Fecha de baja (AAAA-MM-DD):',todayISO()); if(!date)return;
- if(!confirm(`¿Dar de baja a ${u.user}?\nFecha: ${date}`))return;
- u.active=false; u.cancelled=true; u.cancelDate=date; addLifecycle(u,'cancel',date); state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[]; state.cancellations.push({id:Date.now(),user:u.user,date,year:Number(state.year||2026)});
- const b=currentBook(),mi=monthIndex(date); if(mi>=0&&mi<12)b.cancellations.push({user:u.user,date});
- logActivity(`⛔ Baja ${u.user}`,'cancel'); await save(); toast('Cliente dado de baja'); render('users');
-}
-async function deleteUser(index, freeIndex=null){let isFree=freeIndex!==null&&freeIndex!==undefined;let arr=isFree?state.freeUsers:state.users;let pos=isFree?freeIndex:index;if(pos==null||!arr[pos])return;const name=arr[pos].user;if(!confirm(`¿Eliminar definitivamente a ${name}?\n\nPara una baja normal usa ⛔ Baja.`))return;arr.splice(pos,1);logActivity(`🗑️ Eliminado ${name}`,'delete');await save();closeModal();toast('Cliente eliminado');render(isFree?'free':'users');}
 function cancellations(){
  const list=(state.cancellations||[]).filter(x=>Number(x.year)===Number(state.year)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
  $('#content').innerHTML=header('Bajas','Clientes dados de baja en el año actual',customButton('cancellations'))+`<div class="panel"><div class="cards"><div class="card"><div class="label">BAJAS ESTE AÑO</div><div class="big red">${list.length}</div></div></div><div class="tablewrap" style="margin-top:12px"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Estado</th></tr></thead><tbody>${list.length?list.map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td><span class="status s-exp">BAJA</span></td></tr>`).join(''):'<tr><td colspan="3" class="small">No hay bajas registradas este año.</td></tr>'}</tbody></table></div></div>`;applyViewPrefs('cancellations');
