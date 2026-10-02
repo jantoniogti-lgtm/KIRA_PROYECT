@@ -123,7 +123,9 @@ const fmt=d=>d?new Date(d).toLocaleDateString('es-ES'):'-';
 function days(u){if(!u.end)return 999999;return Math.ceil((new Date(u.end)-TODAY)/86400000)}
 function st(u){let d=days(u);if(d<0)return ['Caducado','s-exp'];if(d<=7)return ['Caduca pronto','s-soon'];return ['Activo','s-active']}
 const UI_KEY='kira-control-ui-v1';
-let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',m:'',s:'user',dir:'asc',need:'all',price:'all',line:'all'},free:{q:'',s:'user',dir:'asc'}};
+let uiState=JSON.parse(localStorage.getItem(UI_KEY)||'null')||{page:'dashboard',users:{q:'',f:'all',m:'',s:'user',dir:'asc',need:'all',price:'all',line:'all',bulkDate:''},free:{q:'',s:'user',dir:'asc'}};
+if(!uiState.users)uiState.users={};
+if(!Object.prototype.hasOwnProperty.call(uiState.users,'bulkDate'))uiState.users.bulkDate='';
 function saveUI(){localStorage.setItem(UI_KEY,JSON.stringify(uiState));}
 function setUIPage(p){uiState.page=p;saveUI();}
 function restoreUsersUI(){const p=uiState.users||{};if($('#uq'))$('#uq').value=p.q||'';if($('#uf'))$('#uf').value=p.f||'all';if($('#um'))$('#um').value=p.m||'';if($('#un'))$('#un').value=p.need||'all';if($('#up'))$('#up').value=p.price||'all';if($('#ul'))$('#ul').value=p.line||'all';if($('#us'))$('#us').value=p.s||'user';if($('#ud'))$('#ud').value=p.dir||'asc';}
@@ -332,7 +334,7 @@ let selectedUserIds=new Set();
 function visibleUserIds(){return [...document.querySelectorAll('#utable input.user-select')].map(x=>String(x.value));}
 function toggleUserSelection(id,checked){id=String(id);if(checked)selectedUserIds.add(id);else selectedUserIds.delete(id);updateBulkSelectionUI();}
 function toggleAllVisibleUsers(checked){
- const currentDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||todayISO()).slice(0,10);
+ const currentDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||'').slice(0,10);
  uiState.users=uiState.users||{}; uiState.users.bulkDate=currentDate; saveUI();
  visibleUserIds().forEach(id=>checked?selectedUserIds.add(id):selectedUserIds.delete(id));
  updateBulkSelectionUI();
@@ -346,7 +348,7 @@ function updateBulkSelectionUI(){
  document.querySelectorAll('#utable input.user-select').forEach(x=>x.checked=selectedUserIds.has(String(x.value)));
 }
 function clearUserSelection(){
- const currentDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||todayISO()).slice(0,10);
+ const currentDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||'').slice(0,10);
  uiState.users=uiState.users||{}; uiState.users.bulkDate=currentDate; saveUI();
  selectedUserIds.clear();updateBulkSelectionUI();filterUsers(false);
 }
@@ -381,7 +383,9 @@ async function bulkClassifyUsers(status){
  const ids=[...selectedUserIds].map(String);
  if(!ids.length){toast('Selecciona al menos un cliente');return;}
  const dateEl=$('#bulkClassDate');
- const d=String(dateEl?.value||todayISO()).slice(0,10);
+ const d=String(dateEl?.value||uiState.users?.bulkDate||'').slice(0,10);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){toast('📅 Elige primero la fecha de clasificación. No se usará la fecha de hoy automáticamente.');return;}
+ uiState.users=uiState.users||{};uiState.users.bulkDate=d;saveUI();
  const targetYear=yearOf(d);
  if(!['new','renewed'].includes(status)){toast('Selecciona NUEVO o RENOVADO');return;}
  if(targetYear!==Number(state.year||2026)){
@@ -482,7 +486,7 @@ function users(){
  restoreUsersUI();filterUsers();applyViewPrefs('users')
 }
 function filterUsers(){
- const previousBulkDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||todayISO()).slice(0,10);
+ const previousBulkDate=String($('#bulkClassDate')?.value||uiState.users?.bulkDate||'').slice(0,10);
  let qv=($('#uq')?.value||'').toLowerCase(),f=$('#uf')?.value||'all',m=$('#um')?.value||'',need=$('#un')?.value||'all',priceFilter=$('#up')?.value||'all',lineFilter=$('#ul')?.value||'all',srt=$('#us')?.value||'user',dir=$('#ud')?.value||'asc';
  uiState.users={...(uiState.users||{}),q:qv,f,m,need,price:priceFilter,line:lineFilter,s:srt,dir,bulkDate:previousBulkDate};saveUI();
  let arr=state.users.filter(u=>{
@@ -495,7 +499,7 @@ function filterUsers(){
    return !u.cancelled&&u.active!==false&&ok&&monthOk&&creditOk&&priceOk&&lineOk&&txt.includes(qv)
  });
  arr.sort((a,b)=>{let av=srt==='user'?String(a.user||'').toLowerCase():srt==='start'?(a.start||''):srt==='end'?(a.end||''):srt==='price'?Number(a.price)||0:srt==='credits'?Number(a.creditsNeeded)||0:days(a),bv=srt==='user'?String(b.user||'').toLowerCase():srt==='start'?(b.start||''):srt==='end'?(b.end||''):srt==='price'?Number(b.price)||0:srt==='credits'?Number(b.creditsNeeded)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
- $('#utable').innerHTML=`<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1115;border:1px solid var(--line);border-radius:10px"><label style="display:flex;align-items:center;gap:7px;font-weight:700"><input id="selectAllUsers" type="checkbox" onchange="toggleAllVisibleUsers(this.checked)"> Seleccionar todos los visibles</label><span class="small">Seleccionados: <b id="selectedUsersCount">${[...selectedUserIds].length}</b></span><span class="small" style="color:#ffb000;font-weight:700">El cobro se contabiliza en el mes de la fecha elegida</span><input id="bulkClassDate" type="date" value="${esc(String(uiState.users?.bulkDate||todayISO()).slice(0,10))}" onchange="uiState.users=uiState.users||{};uiState.users.bulkDate=this.value;saveUI()" title="Fecha de clasificación (se contabiliza en el mes de esta fecha)"><button class="btn small" onclick="bulkClassifyUsers('new')">🟢 Marcar NUEVOS</button><button class="btn small" onclick="bulkClassifyUsers('renewed')">🟡 Marcar RENOVADOS</button><button class="btn small" onclick="clearUserSelection()">✖ Limpiar</button></div><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="select">✓</th><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="select"><input class="user-select" type="checkbox" value="${esc(String(u.id))}" ${selectedUserIds.has(String(u.id))?'checked':''} onchange="toggleUserSelection(this.value,this.checked)"></td><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
+ $('#utable').innerHTML=`<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1115;border:1px solid var(--line);border-radius:10px"><label style="display:flex;align-items:center;gap:7px;font-weight:700"><input id="selectAllUsers" type="checkbox" onchange="toggleAllVisibleUsers(this.checked)"> Seleccionar todos los visibles</label><span class="small">Seleccionados: <b id="selectedUsersCount">${[...selectedUserIds].length}</b></span><span class="small" style="color:#ffb000;font-weight:700">La fecha elegida es la fecha REAL de clasificación y determina el mes</span><input id="bulkClassDate" type="date" value="${esc(String(uiState.users?.bulkDate||'').slice(0,10))}" onchange="uiState.users=uiState.users||{};uiState.users.bulkDate=this.value;saveUI()" title="Obligatorio: esta es la fecha que se usará para contabilizar NUEVO/RENOVADO"><button class="btn small" onclick="bulkClassifyUsers('new')">🟢 Marcar NUEVOS</button><button class="btn small" onclick="bulkClassifyUsers('renewed')">🟡 Marcar RENOVADOS</button><button class="btn small" onclick="clearUserSelection()">✖ Limpiar</button></div><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="select">✓</th><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="select"><input class="user-select" type="checkbox" value="${esc(String(u.id))}" ${selectedUserIds.has(String(u.id))?'checked':''} onchange="toggleUserSelection(this.value,this.checked)"></td><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
  applyViewPrefs('users')
 }
 function free(){
@@ -717,7 +721,7 @@ function openUser(index=null, freeIndex=null){
  <option value="new" ${u.yearStatus==='new'?'selected':''}>🟢 NUEVO</option>
  <option value="renewed" ${u.yearStatus==='renewed'?'selected':''}>🟡 RENOVADO</option>
  </select></label>
- <label>Fecha de clasificación<input id="fstatusdate" type="date" value="${u.yearStatusDate?String(u.yearStatusDate).slice(0,10):(u.start?String(u.start).slice(0,10):todayISO())}"></label>
+ <label>Fecha de clasificación<input id="fstatusdate" type="date" value="${u.yearStatusDate?String(u.yearStatusDate).slice(0,10):(u.start?String(u.start).slice(0,10):'')}"></label>
  <label class="full" style="display:flex;align-items:center;gap:9px;background:#0d1115;border:1px solid var(--line);padding:11px;border-radius:8px;color:#fff">
  <input id="ffree" type="checkbox" ${isFree?'checked':''} style="width:18px;height:18px;margin:0;accent-color:var(--orange)">
  <span><b>Cliente GRATIS</b><br><small style="color:var(--muted)">No paga, pero se contabiliza como gasto.</small></span>
@@ -734,7 +738,8 @@ async function saveUser(index, freeIndex=null){
  let isEditingFree=freeIndex!==null&&freeIndex!==undefined, isFree=$('#ffree').checked;
  let old=isEditingFree?state.freeUsers[freeIndex]:(index!==null?state.users[index]:null);
  let status=isFree?'':($('#fstatus').value||'');
- let statusDate=isFree?'':($('#fstatusdate').value||$('#fstart').value||todayISO());
+ let statusDate=isFree?'':String($('#fstatusdate').value||'').slice(0,10);
+ if(!isFree && status && !/^\d{4}-\d{2}-\d{2}$/.test(statusDate)){toast('📅 Elige la fecha de clasificación');return;}
  let u={id:old?.id||(Date.now()+Math.random()),user:$('#fuser').value.trim(),price:isFree?0:(Number($('#fprice').value)||0),start:$('#fstart').value,end:$('#fend').value,mac:$('#fmac').value.trim(),mac2:$('#fmac2').value.trim(),k:isFree?2:'',yearStatus:status,yearStatusDate:statusDate};
  if(!u.user){toast('Falta el usuario');return;}
  const isNew=!old;
