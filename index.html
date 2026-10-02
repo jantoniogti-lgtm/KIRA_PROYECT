@@ -370,49 +370,90 @@ function applyManualClassificationToUser(u,status,d){
 async function bulkClassifyUsers(status){
  const ids=[...selectedUserIds].map(String);
  if(!ids.length){toast('Selecciona al menos un cliente');return;}
- const d=String($('#bulkClassDate')?.value||todayISO()).slice(0,10);
+ const dateEl=$('#bulkClassDate');
+ const d=String(dateEl?.value||todayISO()).slice(0,10);
  const targetYear=yearOf(d);
  if(!['new','renewed'].includes(status)){toast('Selecciona NUEVO o RENOVADO');return;}
  if(targetYear!==Number(state.year||2026)){
    toast(`La fecha es de ${targetYear}. Cambia el año activo a ${targetYear} antes de clasificar.`);
    return;
  }
+ const mi=monthIndexOfDate(d);
+ if(mi<0||mi>11){toast('Fecha de clasificación no válida');return;}
  const b=currentBook();
  b.income=Array.isArray(b.income)?b.income:Array(12).fill(0);
  b.newClients=Array.isArray(b.newClients)?b.newClients:[];
  b.renewals=Array.isArray(b.renewals)?b.renewals:[];
- let count=0, addedIncome=0, skipped=0;
+ state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
+ let count=0,addedIncome=0;
+ const affected=[];
  for(const id of ids){
-   const u=state.users.find(x=>String(x.id)===id);
-   if(!u||u.cancelled||u.active===false){skipped++;continue;}
-   const beforeIncome=Number(b.income[monthIndexOfDate(d)]||0);
-   applyManualClassificationToUser(u,status,d);
-   const afterIncome=Number(b.income[monthIndexOfDate(d)]||0);
-   addedIncome += afterIncome-beforeIncome;
+   const u=state.users.find(x=>String(x.id)===String(id));
+   if(!u||u.cancelled||u.active===false) continue;
+   const price=Number(u.price)||0;
+   const key=normKey(u.user);
+
+   // Elimina únicamente las clasificaciones MANUALES anteriores del cliente/año
+   // y revierte exactamente el importe que esas clasificaciones habían añadido.
+   for(const arrName of ['newClients','renewals']){
+     const arr=b[arrName];
+     const removed=arr.filter(x=>x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear);
+     for(const x of removed){
+       const oldMi=monthIndexOfDate(x.date||x.renewalDate);
+       if(oldMi>=0&&oldMi<12) b.income[oldMi]=(Number(b.income[oldMi])||0)-(Number(x.price)||0);
+     }
+     b[arrName]=arr.filter(x=>!(x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear));
+   }
+   state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===key&&Number(e.year)===targetYear&&e.manual===true));
+
+   // Si cambiamos a RENOVADO, un NUEVO del mismo año deja de ser NUEVO.
+   if(status==='renewed'){
+     b.newClients=b.newClients.filter(x=>!(x&&normKey(x.user)===key&&Number(x.year)===targetYear&&x.manualClassification));
+     const realRenewal=b.renewals.some(x=>x&&!x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear&&String(x.date||x.renewalDate||'').slice(0,10)===d);
+     const charge=realRenewal?0:price;
+     b.renewals.push({id:'manual-renewal-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,renewalDate:d,months:0,price:charge,newEnd:u.end,year:targetYear,manualClassification:true});
+     if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
+     addLifecycle(u,'renewal',d,{manual:true,manualClassification:true,price:charge});
+   }else{
+     b.renewals=b.renewals.filter(x=>!(x&&normKey(x.user)===key&&Number(x.year)===targetYear&&x.manualClassification));
+     const realNew=b.newClients.some(x=>x&&!x.manualClassification&&normKey(x.user)===key&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d);
+     const charge=realNew?0:price;
+     b.newClients.push({id:'manual-new-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,year:targetYear,price:charge,manualClassification:true});
+     if(charge) b.income[mi]=(Number(b.income[mi])||0)+charge;
+     addLifecycle(u,'new',d,{manual:true,manualClassification:true,price:charge});
+   }
+   u.yearStatus=status;
+   u.yearStatusDate=d;
+   affected.push(u.user);
    count++;
  }
  if(!count){toast('No hay clientes válidos seleccionados');return;}
- // Verificación: los clientes procesados deben existir en el libro del año actual.
- const keys=new Set(ids);
- const classified=(status==='renewed'?b.renewals:b.newClients).filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d&&keys.has(String(x.userId||x.id).replace(/^manual-(?:new|renewal)-/,'').split('-')[0]) );
- logActivity(`✏️ Clasificación masiva · ${status==='new'?'NUEVOS':'RENOVADOS'} · ${count} clientes`,'client');
+
+ // Comprobación REAL: la clasificación y el ingreso tienen que existir en el libro,
+ // no basta con que la etiqueta del cliente diga NUEVO/RENOVADO.
+ const records=(status==='renewed'?b.renewals:b.newClients).filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||x.renewalDate||'').slice(0,10)===d&&affected.includes(x.user));
+ const totalClassified=records.length;
+ const totalAmount=records.reduce((a,x)=>a+(Number(x.price)||0),0);
+ if(totalClassified!==count){
+   console.error('Clasificación masiva incompleta', {count,totalClassified,affected,records});
+   toast(`⚠️ Solo se registraron ${totalClassified} de ${count}. No se da por completada la operación.`);
+   return;
+ }
+
+ logActivity(`✏️ Clasificación masiva · ${status==='new'?'NUEVOS':'RENOVADOS'} · ${count} clientes · ${euro(totalAmount)}`,'client');
  selectedUserIds.clear();
- // Guardamos ANTES de renderizar para que ninguna reconstrucción de la tabla pueda interferir.
+ // Guardar ANTES de reconstruir la tabla.
  try{
    const saved=await save();
    render('users');
-   const totalClassified=(status==='renewed'
-     ? b.renewals.filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d).length
-     : b.newClients.filter(x=>x&&x.manualClassification&&Number(x.year)===targetYear&&String(x.date||'').slice(0,10)===d).length);
-   if(saved===false){
-     toast(`⚠️ ${count} ${status==='new'?'nuevos':'renovados'} guardados localmente · ${totalClassified} contabilizados · ${euro(addedIncome)}`);
-   }else{
-     toast(`✅ ${count} clientes ${status==='new'?'NUEVOS':'RENOVADOS'} · ${totalClassified} contabilizados · +${euro(addedIncome)}`);
-   }
+   const label=status==='new'?'NUEVOS':'RENOVADOS';
+   toast(saved===false
+     ? `⚠️ ${count} ${label} guardados localmente · ${euro(totalAmount)}`
+     : `✅ ${count} ${label} contabilizados · +${euro(totalAmount)}`);
  }catch(e){
    console.error('Error clasificación masiva:',e);
    render('users');
-   toast(`⚠️ ${count} clasificados localmente · revisa Firebase`);
+   toast(`⚠️ ${count} ${status==='new'?'NUEVOS':'RENOVADOS'} guardados localmente · ${euro(totalAmount)}`);
  }
 }
 function users(){
