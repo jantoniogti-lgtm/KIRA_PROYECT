@@ -352,6 +352,61 @@ function clearUserSelection(){
  uiState.users=uiState.users||{}; uiState.users.bulkDate=currentDate; saveUI();
  selectedUserIds.clear();updateBulkSelectionUI();filterUsers(false);
 }
+function classificationRecordsForUser(user,status,year){
+ const b=currentBook();
+ const arr=status==='new'?(b.newClients||[]):(b.renewals||[]);
+ const key=normKey(user.user);
+ return arr.filter(x=>x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year||year)===Number(year));
+}
+async function bulkRemoveClassification(status){
+ const ids=[...selectedUserIds].map(String);
+ if(!ids.length){toast('Selecciona al menos un cliente');return;}
+ if(!['new','renewed'].includes(status)){return;}
+ const year=Number(state.year||2026), b=currentBook();
+ b.income=Array.isArray(b.income)?b.income:Array(12).fill(0);
+ b.newClients=Array.isArray(b.newClients)?b.newClients:[];
+ b.renewals=Array.isArray(b.renewals)?b.renewals:[];
+ state.lifecycleEvents=Array.isArray(state.lifecycleEvents)?state.lifecycleEvents:[];
+ const targetArr=status==='new'?b.newClients:b.renewals;
+ let removed=0,amount=0,usersChanged=0;
+ const selectedKeys=new Set(ids);
+ for(const u of state.users){
+   if(!selectedKeys.has(String(u.id))) continue;
+   const key=normKey(u.user);
+   const matches=targetArr.filter(x=>x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year||year)===year);
+   if(matches.length){
+     usersChanged++;
+     for(const x of matches){
+       const mi=monthIndexOfDate(x.date||x.renewalDate);
+       const price=Number(x.price)||0;
+       if(mi>=0&&mi<12)b.income[mi]=Math.max(0,(Number(b.income[mi])||0)-price);
+       amount+=price; removed++;
+     }
+     if(status==='new') b.newClients=b.newClients.filter(x=>!(x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year||year)===year));
+     else b.renewals=b.renewals.filter(x=>!(x&&x.manualClassification&&normKey(x.user)===key&&Number(x.year||year)===year));
+     state.lifecycleEvents=state.lifecycleEvents.filter(e=>!(String(e.userKey)===key&&Number(e.year)===year&&e.manual===true&&e.type===(status==='new'?'new':'renewal')));
+     if(u.yearStatus===status){u.yearStatus='';u.yearStatusDate='';}
+   }
+ }
+ if(!removed){
+   toast(`No hay clasificaciones ${status==='new'?'NUEVO':'RENOVADO'} manuales para los seleccionados.`);
+   return;
+ }
+ logActivity(`🗑 Eliminadas clasificaciones manuales · ${status==='new'?'NUEVOS':'RENOVADOS'} · ${usersChanged} clientes · ${euro(amount)}`,'client');
+ try{await save();}catch(e){console.error(e);}
+ selectedUserIds.clear();
+ render('users');
+ toast(`🗑 ${removed} clasificación(es) eliminada(s) · ${euro(amount)} descontados`);
+}
+function reviewClassifications(){
+ const b=currentBook(),year=Number(state.year||2026);
+ const rows=[
+   ...(b.newClients||[]).filter(x=>x&&x.manualClassification&&Number(x.year||year)===year).map(x=>({...x,_type:'NUEVO'})),
+   ...(b.renewals||[]).filter(x=>x&&x.manualClassification&&Number(x.year||year)===year).map(x=>({...x,_type:'RENOVADO'}))
+ ].sort((a,b)=>String(a.date||a.renewalDate||'').localeCompare(String(b.date||b.renewalDate||'')));
+ $('#modal').innerHTML=`<h2>🔎 Revisar clasificaciones ${year}</h2><p class="small">Aquí puedes comprobar exactamente en qué fecha y mes está contabilizado cada NUEVO/RENOVADO manual. Las renovaciones reales hechas con 🔄 Renovar no se muestran aquí.</p><div class="tablewrap" style="max-height:55vh;overflow:auto"><table class="table"><thead><tr><th>Fecha</th><th>Mes</th><th>Tipo</th><th>Cliente</th><th>Importe</th><th></th></tr></thead><tbody>${rows.length?rows.map((x,i)=>{const d=String(x.date||x.renewalDate||'').slice(0,10);const u=state.users.find(q=>normKey(q.user)===normKey(x.user));const month=d?state.months[monthIndexOfDate(d)]||'-':'-';return `<tr><td>${fmt(d)}</td><td><b>${month}</b></td><td>${x._type==='RENOVADO'?'<span class="status s-soon">RENOVADO</span>':'<span class="status s-active">NUEVO</span>'}</td><td><b>${esc(x.user||'')}</b></td><td>${euro(x.price)}</td><td>${u?`<button class="btn small" onclick="selectedUserIds.add('${String(u.id).replace(/'/g,"\\'")}');closeModal();render('users');toast('Cliente seleccionado: ${String(x.user||'').replace(/'/g,"\\'")}')">☑ Seleccionar</button>`:''}</td></tr>`}).join(''):'<tr><td colspan="6" class="small">No hay clasificaciones manuales registradas.</td></tr>'}</tbody></table></div><div class="modalfoot"><button class="btn" onclick="closeModal()">Cerrar</button></div>`;
+ $('#modalbg').style.display='flex';
+}
 function applyManualClassificationToUser(u,status,d){
  const b=currentBook();b.newClients=Array.isArray(b.newClients)?b.newClients:[];b.renewals=Array.isArray(b.renewals)?b.renewals:[];
  const keyUser=normKey(u.user),year=Number(state.year||2026),date=String(d||todayISO()).slice(0,10),price=Number(u.price)||0;
@@ -499,7 +554,7 @@ function filterUsers(){
    return !u.cancelled&&u.active!==false&&ok&&monthOk&&creditOk&&priceOk&&lineOk&&txt.includes(qv)
  });
  arr.sort((a,b)=>{let av=srt==='user'?String(a.user||'').toLowerCase():srt==='start'?(a.start||''):srt==='end'?(a.end||''):srt==='price'?Number(a.price)||0:srt==='credits'?Number(a.creditsNeeded)||0:days(a),bv=srt==='user'?String(b.user||'').toLowerCase():srt==='start'?(b.start||''):srt==='end'?(b.end||''):srt==='price'?Number(b.price)||0:srt==='credits'?Number(b.creditsNeeded)||0:days(b);return av===bv?0:(av<bv?(dir==='asc'?-1:1):(dir==='asc'?1:-1))});
- $('#utable').innerHTML=`<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1115;border:1px solid var(--line);border-radius:10px"><label style="display:flex;align-items:center;gap:7px;font-weight:700"><input id="selectAllUsers" type="checkbox" onchange="toggleAllVisibleUsers(this.checked)"> Seleccionar todos los visibles</label><span class="small">Seleccionados: <b id="selectedUsersCount">${[...selectedUserIds].length}</b></span><span class="small" style="color:#ffb000;font-weight:700">La fecha elegida es la fecha REAL de clasificación y determina el mes</span><input id="bulkClassDate" type="date" value="${esc(String(uiState.users?.bulkDate||'').slice(0,10))}" onchange="uiState.users=uiState.users||{};uiState.users.bulkDate=this.value;saveUI()" title="Obligatorio: esta es la fecha que se usará para contabilizar NUEVO/RENOVADO"><button class="btn small" onclick="bulkClassifyUsers('new')">🟢 Marcar NUEVOS</button><button class="btn small" onclick="bulkClassifyUsers('renewed')">🟡 Marcar RENOVADOS</button><button class="btn small" onclick="clearUserSelection()">✖ Limpiar</button></div><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="select">✓</th><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="select"><input class="user-select" type="checkbox" value="${esc(String(u.id))}" ${selectedUserIds.has(String(u.id))?'checked':''} onchange="toggleUserSelection(this.value,this.checked)"></td><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
+ $('#utable').innerHTML=`<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#0d1115;border:1px solid var(--line);border-radius:10px"><label style="display:flex;align-items:center;gap:7px;font-weight:700"><input id="selectAllUsers" type="checkbox" onchange="toggleAllVisibleUsers(this.checked)"> Seleccionar todos los visibles</label><span class="small">Seleccionados: <b id="selectedUsersCount">${[...selectedUserIds].length}</b></span><span class="small" style="color:#ffb000;font-weight:700">La fecha elegida es la fecha REAL de clasificación y determina el mes</span><input id="bulkClassDate" type="date" value="${esc(String(uiState.users?.bulkDate||'').slice(0,10))}" onchange="uiState.users=uiState.users||{};uiState.users.bulkDate=this.value;saveUI()" title="Obligatorio: esta es la fecha que se usará para contabilizar NUEVO/RENOVADO"><button class="btn small" onclick="bulkClassifyUsers('new')">🟢 Marcar NUEVOS</button><button class="btn small" onclick="bulkClassifyUsers('renewed')">🟡 Marcar RENOVADOS</button><button class="btn small" onclick="bulkRemoveClassification('new')">🗑 Quitar NUEVO</button><button class="btn small" onclick="bulkRemoveClassification('renewed')">🗑 Quitar RENOVADO</button><button class="btn small" onclick="reviewClassifications()">🔎 Revisar</button><button class="btn small" onclick="clearUserSelection()">✖ Limpiar</button></div><div class="tablewrap"><table class="table"><thead><tr><th data-view-key="select">✓</th><th data-view-key="user">Cliente</th><th data-view-key="line">Línea / usuario</th><th data-view-key="lineExpiry">Fin línea</th><th data-view-key="target">Objetivo Excel</th><th data-view-key="credits">Créditos</th><th data-view-key="extension">Ampliación</th><th data-view-key="end">Caducidad cliente</th><th data-view-key="price">Precio</th><th data-view-key="status">Estado</th><th data-view-key="actions"></th></tr></thead><tbody>${arr.map(u=>{let i=state.users.indexOf(u),x=st(u);return `<tr><td data-view-key="select"><input class="user-select" type="checkbox" value="${esc(String(u.id))}" ${selectedUserIds.has(String(u.id))?'checked':''} onchange="toggleUserSelection(this.value,this.checked)"></td><td data-view-key="user"><b>${esc(u.user)}</b></td><td data-view-key="line">${esc(u.lineUser||'-')}</td><td data-view-key="lineExpiry">${fmt(u.lineExpiry)}</td><td data-view-key="target">${fmt(u.targetExpiry)}</td><td data-view-key="credits">${num(u.creditsNeeded||0)}</td><td data-view-key="extension">${esc(u.extension||'-')}</td><td data-view-key="end">${fmt(u.end)}</td><td data-view-key="price">${euro(u.price)}</td><td data-view-key="status"><span class="status ${x[1]}">${x[0]}</span> ${lifecycleBadge(u)}</td><td data-view-key="actions"><button class="btn small" onclick="openUser(${i})">✏️ Editar</button> <button class="btn small" onclick="renew(${i})">🔄</button> <button class="btn small" onclick="cancelUser(${i})">⛔</button></td></tr>`}).join('')}</tbody></table></div><div class="small" style="margin-top:8px">${arr.length} resultados / ${state.users.length} clientes de pago · ${arr.filter(x=>days(x)>=0).length} activos · ${arr.filter(x=>days(x)<0).length} caducados · ${arr.filter(x=>(Number(x.creditsNeeded)||0)>0).length} con créditos pendientes</div>`;
  applyViewPrefs('users')
 }
 function free(){
