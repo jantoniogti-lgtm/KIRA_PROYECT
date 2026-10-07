@@ -956,6 +956,50 @@ async function saveUser(index, freeIndex=null){
  }
 }
 
+async function cancelUser(index){
+  const u=state.users[index];
+  if(!u){toast('Cliente no encontrado');return;}
+  const date=prompt('Fecha de baja (AAAA-MM-DD):', String(todayISO()).slice(0,10));
+  if(date===null)return;
+  const d=String(date||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){toast('Fecha de baja no válida');return;}
+  const year=Number(state.year||2026);
+  state.cancellations=Array.isArray(state.cancellations)?state.cancellations:[];
+  const b=currentBook();
+  b.cancellations=Array.isArray(b.cancellations)?b.cancellations:[];
+  const key=normKey(u.user)+'|'+year;
+  const exists=state.cancellations.some(x=>x&&normKey(x.user)+'|'+Number(x.year||year)===key);
+  if(exists){toast('Este cliente ya tiene una baja registrada este año');return;}
+  const rec={id:'cancel-'+u.id+'-'+d,user:u.user,userId:u.id,date:d,year};
+  state.cancellations.push(rec);
+  b.cancellations.push(rec);
+  u.cancelled=true;
+  u.active=false;
+  u.cancelDate=d;
+  u.cancelledYear=year;
+  addLifecycle(u,'cancel',d,{manual:true});
+  closeModal();
+  render('users');
+  toast(`⛔ ${u.user} dado de baja`);
+  logActivity(`⛔ Baja · ${u.user} · ${d}`,'cancellation');
+  try{await save();render('users');}catch(e){console.error(e);toast('⚠️ Baja guardada localmente · error al sincronizar');}
+}
+
+async function deleteUser(index, freeIndex=null){
+  const isFree=freeIndex!==null && freeIndex!==undefined;
+  const arr=isFree?state.freeUsers:state.users;
+  const idx=isFree?freeIndex:index;
+  const u=arr?.[idx];
+  if(!u){toast('Usuario no encontrado');return;}
+  if(!confirm(`¿Eliminar definitivamente a "${u.user}"?\n\nEsto elimina el cliente de la lista de usuarios. Sus registros históricos de Finanzas no se borrarán.`))return;
+  arr.splice(idx,1);
+  closeModal();
+  render(isFree?'free':'users');
+  toast(`🗑️ ${u.user} eliminado`);
+  logActivity(`🗑️ Usuario eliminado · ${u.user}`,'delete');
+  try{await save();render(isFree?'free':'users');}catch(e){console.error(e);toast('⚠️ Eliminado localmente · error al sincronizar');}
+}
+
 function cancellations(){
  const list=(state.cancellations||[]).filter(x=>Number(x.year)===Number(state.year)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
  $('#content').innerHTML=header('Bajas','Clientes dados de baja en el año actual',customButton('cancellations'))+`<div class="panel"><div class="cards"><div class="card"><div class="label">BAJAS ESTE AÑO</div><div class="big red">${list.length}</div></div></div><div class="tablewrap" style="margin-top:12px"><table class="table"><thead><tr><th>Fecha</th><th>Cliente</th><th>Estado</th></tr></thead><tbody>${list.length?list.map(x=>`<tr><td>${fmt(x.date)}</td><td><b>${esc(x.user)}</b></td><td><span class="status s-exp">BAJA</span></td></tr>`).join(''):'<tr><td colspan="3" class="small">No hay bajas registradas este año.</td></tr>'}</tbody></table></div></div>`;applyViewPrefs('cancellations');
